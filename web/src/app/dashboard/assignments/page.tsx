@@ -57,6 +57,11 @@ export default function AssignmentsPage() {
   const [chatInput, setChatInput] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  // 聊天分页
+  const [chatPage, setChatPage] = useState<number>(1);
+  const [chatPageSize] = useState<number>(50);
+  const [chatTotal, setChatTotal] = useState<number>(0);
+  const [chatLoadingMore, setChatLoadingMore] = useState<boolean>(false);
 
   useEffect(() => {
     if (!state.me || state.me.role !== "student") return;
@@ -94,10 +99,12 @@ export default function AssignmentsPage() {
       try {
         const [tr, chat] = await Promise.all([
           listThoughtRecords(selectedSessionId),
-          listAssistantChat(selectedSessionId),
+          listAssistantChat(selectedSessionId, 1, chatPageSize),
         ]);
         setTrList(tr.items || []);
         setChatList((chat.items || []).reverse());
+        setChatPage(1);
+        setChatTotal((chat as any).total || (chat.items||[]).length);
         // 拉取后立即将未读标记为已读
         try { await markAssistantChatRead(selectedSessionId); } catch {}
       } catch (e: any) {
@@ -106,6 +113,25 @@ export default function AssignmentsPage() {
     }
     refreshDetails();
   }, [selectedSessionId]);
+
+  // 加载更多聊天
+  const loadMoreChat = async () => {
+    if (!selectedSessionId) return;
+    if (chatList.length >= chatTotal) return;
+    setChatLoadingMore(true);
+    try {
+      const next = chatPage + 1;
+      const res = await listAssistantChat(selectedSessionId, next, chatPageSize);
+      const older = (res.items || []).reverse();
+      setChatList(prev => [...older, ...prev]);
+      setChatPage(next);
+      setChatTotal((res as any).total || chatTotal);
+    } catch (e) {
+      // ignore
+    } finally {
+      setChatLoadingMore(false);
+    }
+  };
 
   const handleSelectSession = (session: Assignment) => {
     setSelectedSessionId(session.sessionId);
@@ -416,6 +442,13 @@ export default function AssignmentsPage() {
                 {/* 聊天窗口 */}
                 <div className="mb-6">
                   <div className="h-64 border border-border rounded p-3 bg-background overflow-y-auto">
+                    {chatList.length < chatTotal && (
+                      <div className="mb-2 text-center">
+                        <button onClick={loadMoreChat} disabled={chatLoadingMore} className="text-xs px-2 py-1 border rounded">
+                          {chatLoadingMore ? '加载中...' : '加载更多'}
+                        </button>
+                      </div>
+                    )}
                     {chatList.length === 0 ? (
                       <div className="text-xs text-muted-foreground">暂无消息</div>
                     ) : (

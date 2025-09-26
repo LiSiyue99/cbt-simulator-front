@@ -54,6 +54,11 @@ export default function StudentDetailPage() {
   const [msg, setMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'sessions' | 'thoughtRecords' | 'chatHistory' | 'diary' | 'activity' | 'ltm'>('sessions');
+  // 聊天分页
+  const [chatPage, setChatPage] = useState<number>(1);
+  const [chatPageSize] = useState<number>(50);
+  const [chatTotal, setChatTotal] = useState<number>(0);
+  const [chatLoadingMore, setChatLoadingMore] = useState<boolean>(false);
 
   // Load student information（改为按ID读取，避免全量列表导致限流）
   useEffect(() => {
@@ -112,11 +117,13 @@ export default function StudentDetailPage() {
         const [thoughtRecordRes, sessionDetail, chat] = await Promise.all([
           getThoughtRecordsBySession(selectedSessionId),
           getSessionDetail(selectedSessionId),
-          listAssistantChat(selectedSessionId)
+          listAssistantChat(selectedSessionId, 1, chatPageSize)
         ]);
         setThoughtRecords(thoughtRecordRes.items || []);
         setChatHistory(sessionDetail.chatHistory || []);
         setChatList((chat.items || []).reverse());
+        setChatPage(1);
+        setChatTotal((chat as any).total || (chat.items||[]).length);
         try { await markAssistantChatRead(selectedSessionId); } catch {}
       } catch (error) {
         console.error('Failed to load session data:', error);
@@ -124,6 +131,24 @@ export default function StudentDetailPage() {
     }
     loadFeedbacksAndThoughtRecords();
   }, [selectedSessionId]);
+
+  async function loadMoreChat() {
+    if (!selectedSessionId) return;
+    if (chatList.length >= chatTotal) return;
+    setChatLoadingMore(true);
+    try {
+      const next = chatPage + 1;
+      const res = await listAssistantChat(selectedSessionId, next, chatPageSize);
+      const older = (res.items || []).reverse();
+      setChatList(prev => [...older, ...prev]);
+      setChatPage(next);
+      setChatTotal((res as any).total || chatTotal);
+    } catch (e) {
+      // ignore
+    } finally {
+      setChatLoadingMore(false);
+    }
+  }
 
   async function sendChatMsg() {
     if (!selectedSessionId || !chatInput.trim()) return;
@@ -278,6 +303,13 @@ export default function StudentDetailPage() {
                         {/* Chat */}
                         <div>
                           <div className="h-60 border border-border rounded p-3 bg-background overflow-y-auto mb-2">
+                            {chatList.length < chatTotal && (
+                              <div className="mb-2 text-center">
+                                <button onClick={loadMoreChat} disabled={chatLoadingMore} className="text-xs px-2 py-1 border rounded">
+                                  {chatLoadingMore ? '加载中...' : '加载更多'}
+                                </button>
+                              </div>
+                            )}
                             {chatList.length === 0 ? (
                               <div className="text-xs text-muted-foreground">暂无消息</div>
                             ) : (

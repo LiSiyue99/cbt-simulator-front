@@ -43,7 +43,7 @@ export function getLastSession(visitorInstanceId: string) {
  * listSessions - 会话历史列表（分页）
  */
 export function listSessions(visitorInstanceId: string, page = 1, pageSize = 20) {
-  return httpGet<{ items: { sessionId: string; sessionNumber: number; createdAt: string; completed: boolean; messageCount: number; hasDiary: boolean; hasActivity: boolean; hasThoughtRecord: boolean; hasNewFeedback: boolean; unreadFeedbackCount: number; lastMessage?: { speaker: 'user' | 'ai'; content: string; timestamp?: string } }[]; page: number; pageSize: number }>("/sessions/list", {
+  return httpGet<{ items: { sessionId: string; sessionNumber: number; createdAt: string; completed: boolean; messageCount: number; hasDiary: boolean; hasActivity: boolean; hasThoughtRecord: boolean; lastMessage?: { speaker: 'user' | 'ai'; content: string; timestamp?: string } }[]; page: number; pageSize: number }>("/sessions/list", {
     query: { visitorInstanceId, page, pageSize, includePreview: true },
   });
 }

@@ -38,8 +38,11 @@ function UsersTab(){
   const [sortDir, setSortDir] = useState<'asc'|'desc'>('asc');
   const [showShadow, setShowShadow] = useState(false);
   const tableWrapId = 'users-table-wrap';
-  useEffect(()=>{ load(); },[]);
-  async function load(){ const res = await getAdminUsers(filter); setList(res.items); }
+  const [page, setPage] = useState<number>(1);
+  const [pageSize] = useState<number>(50);
+  const [total, setTotal] = useState<number>(0);
+  useEffect(()=>{ load(); },[page, filter]);
+  async function load(){ const res = await getAdminUsers({ ...filter, page, pageSize } as any); setList(res.items); setTotal((res as any).total||0); }
   async function create(){ await createAdminUser(form); setForm({ role:'student', status:'active' }); await load(); }
   async function saveEdit(){ if(!editing) return; const { id, ...body } = editing; await updateAdminUser(id, body); setEditing(null); await load(); }
   async function toggleActive(u:any){ await updateAdminUser(u.id, { status: u.status==='active' ? 'inactive':'active' }); await load(); }
@@ -148,6 +151,15 @@ function UsersTab(){
           </table>
         </div>
         {showShadow && <div className="pointer-events-none absolute top-0 right-0 h-full w-6 bg-gradient-to-l from-white" />}
+      </div>
+      {/* Pagination */}
+      <div className="flex items-center justify-between mt-3 text-sm text-gray-600">
+        <div>共 {(total||0)} 项，每页 {pageSize}</div>
+        <div className="flex gap-2">
+          <button className="border rounded px-2 py-1" disabled={page<=1} onClick={()=>setPage(p=>Math.max(1,p-1))}>上一页</button>
+          <span>第 {page} 页</span>
+          <button className="border rounded px-2 py-1" disabled={page*pageSize>=total} onClick={()=>setPage(p=>p+1)}>下一页</button>
+        </div>
       </div>
       {editing && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={()=>setEditing(null)}>

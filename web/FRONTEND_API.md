@@ -43,7 +43,7 @@
 - getStudentSessions(studentId) → GET `/assistant/students/{id}/sessions`
 - getStudentHistory(studentId) → GET `/assistant/students/{id}/history`
 - 助教聊天（统一替代旧 questions/feedbacks）：
-  - listAssistantChat(sessionId) → GET `/assistant/chat` → `{ items, unreadCount }`
+  - listAssistantChat(sessionId, page?, pageSize?) → GET `/assistant/chat` → `{ items, unreadCount, page, pageSize, total }`
   - sendAssistantChat({ sessionId, content }) → POST `/assistant/chat` → `{ id }`
   - markAssistantChatRead(sessionId) → POST `/assistant/chat/read` → `{ ok: true }`
 - getAssistantDashboardStats() → GET `/assistant/dashboard-stats`（包含 `unreadMessages`）
@@ -70,7 +70,7 @@
 ## Admin（src/services/api/assistant.ts 内封装）
 - 概览：getAdminOverview() → GET `/admin/overview`
 - 人员与分配：
-  - getAdminUsers(params) → GET `/admin/users`
+  - getAdminUsers({ role?, status?, q?, page?, pageSize? }) → GET `/admin/users` → `{ items, page, pageSize, total }`
   - createAdminUser(body) → POST `/admin/users`
   - updateAdminUser(id, body) → PUT `/admin/users/{id}`
   - deleteAdminUser(id) → DELETE `/admin/users/{id}`

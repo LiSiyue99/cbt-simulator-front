@@ -60,8 +60,8 @@ export function listAssistantFeedback(sessionId: string) {
 }
 
 // Assistant-Student Chat
-export function listAssistantChat(sessionId: string) {
-  return httpGet<{ items: { id: string; sessionId: string; senderRole: string; senderId: string; content: string; status: string; createdAt: string }[]; unreadCount: number }>("/assistant/chat", { query: { sessionId } });
+export function listAssistantChat(sessionId: string, page = 1, pageSize = 50) {
+  return httpGet<{ items: { id: string; sessionId: string; senderRole: string; senderId: string; content: string; status: string; createdAt: string }[]; unreadCount: number; page: number; pageSize: number; total: number }>("/assistant/chat", { query: { sessionId, page, pageSize } });
 }
 
 export function sendAssistantChat(input: { sessionId: string; content: string }) {
