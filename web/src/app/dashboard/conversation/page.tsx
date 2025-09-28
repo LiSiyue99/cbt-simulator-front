@@ -72,6 +72,8 @@ export default function ConversationPage({ playgroundInstanceId }: { playgroundI
   const [cooldownUntil, setCooldownUntil] = useState<number | null>(null);
   const [cooldownLeftSec, setCooldownLeftSec] = useState<number>(0);
   const visitorName = state.me?.currentVisitor?.name || "AI访客";
+  const [templateBrief, setTemplateBrief] = useState<string>("");
+  const [templateName, setTemplateName] = useState<string>("");
   const canInteract = useMemo(() => !!sessionId && !selectedHistorySession, [sessionId, selectedHistorySession]);
   const nextSessionNumber = useMemo(() => (sessions.length ? Math.max(...sessions.map(s => s.sessionNumber)) + 1 : 1), [sessions]);
 
@@ -89,6 +91,20 @@ export default function ConversationPage({ playgroundInstanceId }: { playgroundI
                (state.me.visitorInstanceIds && state.me.visitorInstanceIds[0]);
     setVisitorInstanceId(vid || null);
   }, [state.me]);
+
+  // 读取模板 brief 展示
+  useEffect(() => {
+    async function loadTplBrief(){
+      try {
+        if (!visitorInstanceId) { setTemplateBrief(""); return; }
+        const { getVisitorTemplate } = await import('@/services/api/sessions');
+        const t = await getVisitorTemplate(visitorInstanceId);
+        setTemplateBrief(t?.brief || "");
+        setTemplateName(t?.name || "");
+      } catch { setTemplateBrief(""); }
+    }
+    loadTplBrief();
+  }, [visitorInstanceId]);
 
   useEffect(() => {
     async function loadSessionData() {
@@ -274,7 +290,12 @@ export default function ConversationPage({ playgroundInstanceId }: { playgroundI
       setShowActivityDetail(false);
       setWeeklyActivity(null);
     } catch (e: any) {
-      setMsg(e?.message || '创建对话失败');
+      const code = e?.code || '';
+      if (code === 'student_not_open_yet') setMsg('本周对话尚未开放（周二 00:00 开放）');
+      else if (code === 'student_locked_for_week') setMsg('本周对话窗口已结束（周五 24:00 截止）');
+      else if (code === 'weekly_quota_exhausted') setMsg('本周已创建过一次对话，请下周继续');
+      else if (code === 'session_unfinished') setMsg('你有未完成的对话，请先在“历史对话”中完成它');
+      else setMsg(e?.message || '创建对话失败');
     } finally {
       setConfirmStarting(false);
     }
@@ -302,7 +323,9 @@ export default function ConversationPage({ playgroundInstanceId }: { playgroundI
         setChat(prev => [...prev, aiMessage]);
       }
     } catch (e: any) {
-      setMsg(e?.message || "发送失败");
+      const code = e?.code || '';
+      if (code === 'student_locked_for_week') setMsg('已过周五24:00，本周对话结束');
+      else setMsg(e?.message || "发送失败");
       // 如果发送失败，从聊天中移除消息
       setChat(prev => prev.filter(m => m !== userMessage));
     } finally {
@@ -473,6 +496,13 @@ export default function ConversationPage({ playgroundInstanceId }: { playgroundI
   };
 
   const isPlayground = playgroundInstanceId != null;
+  const isStudent = state.me?.role === 'student' && !isPlayground;
+
+  // 是否显示“开始新对话”的大按钮：
+  // - 学生：需要 allowNext（窗口期且产出齐备）
+  // - Playground：也需要 allowNext（避免未生成产出时误导）
+  // - 助教/管理员：总是允许
+  const canShowStartCTA = isStudent ? allowNext : (isPlayground ? allowNext : true);
 
   return (
     <div className="flex h-screen bg-gradient-to-br from-background to-primary/5">
@@ -492,7 +522,7 @@ export default function ConversationPage({ playgroundInstanceId }: { playgroundI
 
         <div className="p-4 space-y-3 max-h-[calc(100vh-120px)] overflow-y-auto">
           {/* Start New Session CTA when none is active */}
-          {(!sessionId && !isPlayground) && (
+          {(!sessionId && canShowStartCTA) && (
             <button
               onClick={handleStartNewSession}
               disabled={loading || startingNewSession}
@@ -590,7 +620,10 @@ export default function ConversationPage({ playgroundInstanceId }: { playgroundI
                 )}
               </div>
               <div>
-                <h3 className="text-lg font-semibold text-foreground">{visitorName}</h3>
+                <h3 className="text-lg font-semibold text-foreground">{isPlayground ? (templateName || visitorName) : visitorName}</h3>
+                {templateBrief && (
+                  <p className="text-xs text-muted-foreground mt-0.5 max-w-[42rem] line-clamp-2">{templateBrief}</p>
+                )}
                 <div className="text-sm text-muted-foreground flex items-center gap-2">
                   {selectedHistorySession ? (
                     <>
@@ -603,10 +636,12 @@ export default function ConversationPage({ playgroundInstanceId }: { playgroundI
                       正在进行CBT训练对话
                     </>
                   ) : (
-                    <>
-                      <Sparkles className="w-3 h-3" />
-                      AI访客 · CBT训练伙伴
-                    </>
+                    isPlayground ? null : (
+                      <>
+                        <Sparkles className="w-3 h-3" />
+                        AI访客 · CBT训练伙伴
+                      </>
+                    )
                   )}
                 </div>
               </div>
@@ -631,7 +666,7 @@ export default function ConversationPage({ playgroundInstanceId }: { playgroundI
               </button>
             )}
 
-            {selectedHistorySession && (
+            {selectedHistorySession && !isStudent && (
               <>
                 <button
                   onClick={handleShowOutputs}
@@ -677,7 +712,7 @@ export default function ConversationPage({ playgroundInstanceId }: { playgroundI
               <p className="text-muted-foreground mb-8 max-w-lg leading-relaxed">
                 点击下方按钮开始本周的CBT对话训练。系统会为你加载<span className="font-medium text-primary">{visitorName}</span>的最新状态和活动记录。
               </p>
-              {(!isPlayground || allowNext) ? (
+              {canShowStartCTA ? (
                 <button
                   onClick={handleStartNewSession}
                   disabled={loading || startingNewSession}
@@ -866,7 +901,7 @@ export default function ConversationPage({ playgroundInstanceId }: { playgroundI
           <div className="bg-card rounded-lg p-6 max-w-md w-full mx-4">
             <h3 className="text-lg font-semibold text-foreground mb-4">结束本次对话</h3>
             <p className="text-sm text-muted-foreground mb-4">
-              请简要描述你希望在课后完成的作业或思考内容：
+              请简要描述你希望来访者在课后完成的作业或思考内容：
             </p>
             <textarea
               value={assignment}
@@ -911,29 +946,32 @@ export default function ConversationPage({ playgroundInstanceId }: { playgroundI
 
       {/* Success Modal */}
       {showSuccessModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-card rounded-lg p-8 max-w-md w-full mx-4 text-center">
             <div className="h-16 w-16 mx-auto mb-4 rounded-full bg-green-100 flex items-center justify-center">
               <CheckCircle2 className="h-8 w-8 text-green-600" />
             </div>
             <h3 className="text-lg font-semibold text-foreground mb-2">对话已成功结束</h3>
-            <p className="text-sm text-muted-foreground mb-6">
-              您可以前往学习档案填写三联表，或者开始下一次对话训练。
-            </p>
-              <div className="flex flex-col gap-2">
-              <button
-                onClick={async () => { setShowSuccessModal(false); if (lastFinalizedSessionId) { await openThoughtRecord(lastFinalizedSessionId); } }}
-                className="w-full px-4 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors font-medium"
-              >
-                {trSubmitted ? '查看三联表' : '填写三联表'}
-              </button>
-            </div>
+                <p className="text-sm text-muted-foreground mb-6">
+                  {isStudent ? '请前往学习档案填写三联表。下一次对话将按窗口期开放（周二 00:00 ~ 周五 24:00）。' : '您可以前往学习档案填写三联表，或者开始下一次对话训练。'}
+                </p>
+                <div className="flex flex-col gap-2">
+                  {!isStudent && (
+                    <button
+                      onClick={async () => { setShowSuccessModal(false); if (lastFinalizedSessionId) { await openThoughtRecord(lastFinalizedSessionId); } }}
+                      className="w-full px-4 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors font-medium"
+                    >
+                      {trSubmitted ? '查看三联表' : '填写三联表'}
+                    </button>
+                  )}
+                  <button onClick={()=>setShowSuccessModal(false)} className="w-full px-4 py-2 border rounded">知道了</button>
+                </div>
           </div>
         </div>
       )}
 
       {/* 下一次对话就绪提示 */}
-      {!sessionId && !selectedHistorySession && nextReadyMsg && allowNext && (
+      {!sessionId && !selectedHistorySession && nextReadyMsg && allowNext && !isStudent && (
         <div className="fixed bottom-6 right-6 bg-green-50 border border-green-200 rounded-lg shadow-lg p-4 max-w-sm">
           <div className="text-green-800 text-sm mb-2">{nextReadyMsg}</div>
           <div className="flex gap-2 justify-end">

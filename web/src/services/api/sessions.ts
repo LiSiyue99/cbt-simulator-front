@@ -68,3 +68,10 @@ export function prepareNewSession(sessionId: string) {
 export function ensureSessionOutputs(sessionId: string) {
   return httpPost<{ ok: boolean; regenerated: boolean; hasDiary: boolean; hasActivity: boolean; hasLtm: boolean }>(`/sessions/${sessionId}/ensure-outputs`, {});
 }
+
+/**
+ * getVisitorTemplate - 读取某个访客实例的模板信息（名称/键/brief）
+ */
+export function getVisitorTemplate(visitorInstanceId: string){
+  return httpGet<{ name: string; templateKey: string; brief: string }>(`/visitor/template`, { query: { visitorInstanceId } });
+}

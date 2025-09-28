@@ -197,13 +197,12 @@ function AssignmentsTab(){
   const [filter, setFilter] = useState<any>({});
   const [selected, setSelected] = useState<any|null>(null);
   const [tpls, setTpls] = useState<string[]>([]);
-  const [assistantQuery, setAssistantQuery] = useState('');
-  const [assistantList, setAssistantList] = useState<any[]>([]);
+  const [assistants, setAssistants] = useState<any[]>([]);
   const [chosenAssistant, setChosenAssistant] = useState<string>('');
-  useEffect(()=>{ load(); },[]);
+  useEffect(()=>{ load(); loadAssistants(); },[]);
   async function load(){ const res = await getAssignmentStudents(filter); setList(res.items); if(res.items?.length && !selected) setSelected(res.items[0]); }
+  async function loadAssistants(){ const res = await getAdminUsers({ role: 'assistant_tech' }); setAssistants(res.items||[]); if(!chosenAssistant && res.items?.length) setChosenAssistant(res.items[0].id); }
   async function applyTemplates(){ if(!selected) return; for(const k of tpls){ await assignTemplate({ studentId: selected.studentId, templateKey: k }); } await load(); }
-  async function searchAssistants(){ const res = await getAdminUsers({ role: 'assistant_tech', q: assistantQuery }); setAssistantList(res.items||[]); }
   async function applyAssistant(){ if(!selected || !chosenAssistant) return; await assignAssistant({ studentId: selected.studentId, assistantId: chosenAssistant }); await load(); }
   return (
     <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
@@ -245,13 +244,8 @@ function AssignmentsTab(){
             </div>
             <div className="border rounded p-3">
               <div className="font-semibold mb-2">设置助教</div>
-              <div className="flex gap-2 mb-2">
-                <input className="border rounded px-2 py-1 flex-1" placeholder="搜索助教（邮箱/姓名/工号）" value={assistantQuery} onChange={e=>setAssistantQuery(e.target.value)} />
-                <button className="border rounded px-2" onClick={searchAssistants}>搜索</button>
-              </div>
               <select className="border rounded w-full px-2 py-1" onChange={e=>setChosenAssistant(e.target.value)} value={chosenAssistant}>
-                <option value="">请选择助教</option>
-                {assistantList.map(a=> (<option key={a.id} value={a.id}>{a.name||a.email}</option>))}
+                {assistants.map(a=> (<option key={a.id} value={a.id}>{a.name||a.email}</option>))}
               </select>
               <button className="mt-3 bg-emerald-600 text-white rounded px-3 py-1" onClick={applyAssistant}>设为助教</button>
               <div className="mt-2 text-xs text-gray-500">当前助教：{selected.assistants.map((a:any)=> a.assistantName).join(', ')||'无'}</div>
@@ -296,7 +290,13 @@ function AssistantsTab(){
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
               {students.map((rel:any)=> (
                 <div key={rel.id} className="border rounded p-2 flex items-center justify-between">
-                  <div className="text-sm">student: {rel.studentId} · instance: {rel.visitorInstanceId}</div>
+                  <div className="text-sm flex items-center gap-2">
+                    <span className="font-medium text-foreground">{rel.studentName||rel.studentEmail}</span>
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200">
+                      <span>{rel.visitorName||'AI访客'}</span>
+                      <span className="opacity-70">模板 {rel.templateKey||'-'}</span>
+                    </span>
+                  </div>
                   <button className="border rounded px-2" onClick={()=>removeRelation(rel.id)}>移除</button>
                 </div>
               ))}

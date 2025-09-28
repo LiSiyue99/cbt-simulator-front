@@ -25,6 +25,41 @@
 - getSessionDetail(sessionId) → GET `/sessions/{id}` → 详情
 - prepareNewSession(sessionId) → POST `/sessions/{id}/prepare`（回退用途）
 - ensureSessionOutputs(sessionId) → POST `/sessions/{id}/ensure-outputs`（开始新对话前轮询校验）
+  - 学生专属规则（助教/admin/playground 不受限）：
+    - 开放窗口：周二 00:00 ~ 周五 24:00（北京时间）。周二之前 → `403 student_not_open_yet`；周五之后 → `403 student_locked_for_week`。
+    - 周度配额：一周仅一次新会话 → `403 weekly_quota_exhausted`。
+    - 冷却：创建后 1 小时内禁止再次创建 → `403 cooldown_recent_created`。
+    - 未完成阻断：存在未完成会话 → `409 session_unfinished`（返回 `sessionId/sessionNumber`）。
+    - 周级豁免 `extend_student_tr` 放宽“封窗时间”，不绕过配额/冷却/未完成。
+  - 可配置时间窗：`student_open_weekday`（默认 2）、`student_deadline_weekday`（默认 5）、`assistant_deadline_weekday`（默认 7）。
+  - 新增：getVisitorTemplate(visitorInstanceId) → GET `/visitor/template` → `{ name, templateKey, brief }`（用于在会话页显示模板简介）。
+
+示例
+```ts
+// 1) 开始会话（带错误码映射）
+try {
+  const { sessionId } = await startSession({ visitorInstanceId });
+} catch (e: any) {
+  const code = e?.code;
+  if (code === 'student_not_open_yet') toast('本周对话尚未开放');
+  else if (code === 'student_locked_for_week') toast('本周对话窗口已结束');
+  else if (code === 'weekly_quota_exhausted') toast('本周名额已用完');
+  else if (code === 'cooldown_recent_created') toast('请稍后再开始下一次对话');
+  else if (code === 'session_unfinished') router.push('/dashboard/conversation?history=unfinished');
+  else toast(e?.message || '创建对话失败');
+}
+
+// 2) 发送消息
+const r = await appendMessage(sessionId, 'user', input);
+setMessages((prev) => [...prev, r.aiResponse && r.aiResponse]);
+
+// 3) 结束会话
+await finalizeSession(sessionId, assignmentText);
+
+// 4) 读取模板 brief
+const tpl = await getVisitorTemplate(visitorInstanceId);
+setTemplateBrief(tpl?.brief || '');
+```
 
 ---
 
@@ -64,6 +99,16 @@
 - ensurePlayground() → POST `/playground/ensure`
 - listPlaygroundInstances() → GET `/playground/instances`
 - getPlaygroundLtm(visitorInstanceId) → GET `/playground/ltm`
+- 重要权限说明：`student` 学生角色被后端明确禁止访问所有 `/playground/*` 接口（403），前端也不应在学生界面展示 Playground 能力。
+
+时序图（学生被拒绝访问 Playground）
+```mermaid
+sequenceDiagram
+  participant FE as Student FE
+  participant API as Backend
+  FE->>API: GET /playground/ltm
+  API-->>FE: 403 forbidden
+```
 
 ---
 
@@ -79,14 +124,34 @@
   - assignAssistant({ studentId, assistantId, visitorInstanceId?, templateKey? }) → POST `/admin/assignments/assign-assistant`
   - bulkAssign({ items }) → POST `/admin/assignments/bulk`
   - getAssistantStudentsAdmin(assistantId?) → GET `/admin/assistant-students`
+  - 响应扩展字段：`studentName/studentEmail/visitorName/templateKey`
   - addAssistantStudentAdmin(payload) → POST `/admin/assistant-students`
   - removeAssistantStudentAdmin(id) → DELETE `/admin/assistant-students/{id}`
 - 规则与日历：
   - getAdminTimeWindow/saveAdminTimeWindow → GET/POST `/admin/policy/time-window`
   - createDdlOverride/listDdlOverrides → POST/GET `/admin/policy/ddl-override`
+    - 重要：当 `action = extend_student_tr` 时，表示放开“对话开始+三联表提交”两者的限制（按 `until` 生效）。
   - createBatchDdlOverride/listRecentDdlOverrides → POST/GET `/admin/policy/ddl-override/batch|recent`
   - getSessionOverrides/createSessionOverride/listRecentSessionOverrides → GET/POST/GET `/admin/policy/session-override[|/recent]`
 - 模板管理（新增）：
+示例
+```ts
+// 1) 批量 DDL 豁免：本周为多名学生放宽“对话+三联表”封窗
+await createBatchDdlOverride([
+  { subjectId: stu1, weekKey: '2025-40', action: 'extend_student_tr', until: '2025-10-12T16:00:00.000Z' },
+  { subjectId: stu2, weekKey: '2025-40', action: 'extend_student_tr', until: '2025-10-12T16:00:00.000Z' },
+]);
+
+// 2) Admin/People：获取助教负责学生（用于展示 name + 模板 tag）
+const { items } = await getAssistantStudentsAdmin(assistantId);
+// item: { id, assistantId, studentId, visitorInstanceId, studentName, studentEmail, visitorName, templateKey }
+
+// 3) 批量改派
+await bulkAssign({ items: [
+  { studentId: 'stu-1', assistantId: 'assistant-A' },
+  { studentId: 'stu-2', assistantId: 'assistant-B', templateKey: '4' },
+]});
+```
   - getAdminTemplates() → GET `/admin/templates` → `{ items: { templateKey, name, brief, corePersona, updatedAt }[] }`
   - updateAdminTemplate(templateKey, { name?, brief?, corePersona? }) → PUT `/admin/templates/{templateKey}` → `{ ok, item }`
 

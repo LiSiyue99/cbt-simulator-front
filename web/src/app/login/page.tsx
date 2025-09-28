@@ -48,11 +48,11 @@ export default function LoginPage() {
       <div className="w-full max-w-2xl flex flex-col items-center gap-8">
         {/* Title 区域：极简风格 */}
         <div className="text-center space-y-3">
-          <h1 className="text-4xl font-extrabold tracking-tight text-neutral-900">西北师范大学 · 认知行为治疗课程</h1>
-          <p className="text-lg text-neutral-500">AI 教学平台 · 2025 年秋季学期</p>
+          <h1 className="text-4xl font-extrabold tracking-tight text-neutral-900">认知行为治疗智能体互动平台</h1>
+          <p className="text-lg text-neutral-500">2025 年秋季学期</p>
         </div>
 
-        <h2 className="text-xl font-semibold text-neutral-800">登录</h2>
+        <h2 className="text-xl font-semibold text-neutral-800">登录界面</h2>
         {phase === "request" ? (
           <div className="w-full max-w-lg space-y-4">
             <input
