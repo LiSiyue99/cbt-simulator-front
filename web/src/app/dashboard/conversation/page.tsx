@@ -86,7 +86,11 @@ export default function ConversationPage({ playgroundInstanceId }: { playgroundI
   useEffect(() => {
     // 学生默认实例（当不在 playground 模式时才生效）
     if (playgroundInstanceId != null) return;
-    if (!state.me || state.me.role !== "student") return;
+    if (!state.me) return;
+    const roles: string[] = Array.isArray((state.me as any).roles) ? ((state.me as any).roles as string[]) : [state.me.role];
+    const hasStudentRole = state.me.role === 'student' || roles.includes('student');
+    const hasStudentContext = !!state.me.currentVisitor?.instanceId;
+    if (!hasStudentRole && !hasStudentContext) return;
     const vid = state.me.currentVisitor?.instanceId ||
                (state.me.visitorInstanceIds && state.me.visitorInstanceIds[0]);
     setVisitorInstanceId(vid || null);
@@ -271,7 +275,10 @@ export default function ConversationPage({ playgroundInstanceId }: { playgroundI
     } catch (e: any) {
       setLoadingActivity(false);
       setShowActivityModal(false);
-      setMsg(e?.message || '开始会话失败');
+      const code = e?.code || '';
+      if (code === 'package_missing') setMsg('请等待管理员安排对话任务');
+      else if (code === 'package_window_closed') setMsg('当前作业包窗口未开放');
+      else setMsg(e?.message || '开始会话失败');
     } finally {
       setStartingNewSession(false);
     }
@@ -295,6 +302,8 @@ export default function ConversationPage({ playgroundInstanceId }: { playgroundI
       else if (code === 'student_locked_for_week') setMsg('本周对话窗口已结束（周五 24:00 截止）');
       else if (code === 'weekly_quota_exhausted') setMsg('本周已创建过一次对话，请下周继续');
       else if (code === 'session_unfinished') setMsg('你有未完成的对话，请先在“历史对话”中完成它');
+      else if (code === 'package_missing') setMsg('请等待管理员安排对话任务');
+      else if (code === 'package_window_closed') setMsg('当前作业包窗口未开放');
       else setMsg(e?.message || '创建对话失败');
     } finally {
       setConfirmStarting(false);
@@ -395,23 +404,23 @@ export default function ConversationPage({ playgroundInstanceId }: { playgroundI
     setLoading(true);
     setMsg(null);
 
-    try {
-      const sessionDetail = await getSessionDetail(session.sessionId);
+      try {
+        const sessionDetail = await getSessionDetail(session.sessionId);
       setChat(sessionDetail.chatHistory || []);
       setHistoryDetail(sessionDetail);
-      // 检查是否已存在三联表，确定按钮文案
+      // 检查是否已存在作业提交，确定按钮文案
       try {
-        const { listThoughtRecords } = await import('@/services/api/thoughtRecords');
-        const tr = await listThoughtRecords(session.sessionId);
-        const items = tr.items || [];
+        const { getHomeworkSubmission, createHomeworkSubmission } = await import('@/services/api/homeworkSubmissions');
+        const tr = await getHomeworkSubmission(session.sessionId);
+        const items = tr.item ? [tr.item] : [];
         if (items.length > 0) {
           setTrSubmitted(true);
-          // 将最新一条三联表展示到表单
-          const last = items[0];
+          // 将最新一条作业（从 formData 读取）展示到表单
+          const last: any = items[0];
           setTrForm({
-            triggeringEvent: last.triggeringEvent || '',
-            thoughtsAndBeliefs: last.thoughtsAndBeliefs || '',
-            consequences: last.consequences || '',
+            triggeringEvent: last.formData?.triggeringEvent || '',
+            thoughtsAndBeliefs: last.formData?.thoughtsAndBeliefs || '',
+            consequences: last.formData?.consequences || '',
           });
         } else {
           setTrSubmitted(false);
@@ -446,20 +455,20 @@ export default function ConversationPage({ playgroundInstanceId }: { playgroundI
     setShowOutputs(true);
   };
 
-  // 打开某会话的三联表：根据是否存在来决定“填写/查看”，并准备表单
+  // 打开某会话的作业：根据是否存在来决定“填写/查看”，并准备表单
   const openThoughtRecord = async (targetSessionId: string) => {
     setSelectedHistorySession(targetSessionId);
     try {
-      const { listThoughtRecords } = await import('@/services/api/thoughtRecords');
-      const tr = await listThoughtRecords(targetSessionId);
-      const items = tr.items || [];
+      const { getHomeworkSubmission } = await import('@/services/api/homeworkSubmissions');
+      const tr = await getHomeworkSubmission(targetSessionId);
+      const items = tr.item ? [tr.item] : [];
       if (items.length > 0) {
         setTrSubmitted(true);
-        const last = items[0];
+        const last: any = items[0];
         setTrForm({
-          triggeringEvent: last.triggeringEvent || '',
-          thoughtsAndBeliefs: last.thoughtsAndBeliefs || '',
-          consequences: last.consequences || '',
+          triggeringEvent: last.formData?.triggeringEvent || '',
+          thoughtsAndBeliefs: last.formData?.thoughtsAndBeliefs || '',
+          consequences: last.formData?.consequences || '',
         });
       } else {
         setTrSubmitted(false);
@@ -496,7 +505,11 @@ export default function ConversationPage({ playgroundInstanceId }: { playgroundI
   };
 
   const isPlayground = playgroundInstanceId != null;
-  const isStudent = state.me?.role === 'student' && !isPlayground;
+  const isStudent = !isPlayground && !!state.me && (
+    state.me.role === 'student' ||
+    (Array.isArray((state.me as any).roles) && ((state.me as any).roles as string[]).includes('student')) ||
+    !!state.me.currentVisitor?.instanceId
+  );
 
   // 是否显示“开始新对话”的大按钮：
   // - 学生：需要 allowNext（窗口期且产出齐备）
@@ -679,7 +692,7 @@ export default function ConversationPage({ playgroundInstanceId }: { playgroundI
                   onClick={() => setTrOpen(true)}
                   className="px-3 py-2 text-sm border border-border rounded-lg hover:bg-accent transition-colors"
                 >
-                  {trSubmitted ? '查看三联表' : '填写三联表'}
+                  {trSubmitted ? '查看作业' : '填写作业'}
                 </button>
               </>
             )}
@@ -953,7 +966,7 @@ export default function ConversationPage({ playgroundInstanceId }: { playgroundI
             </div>
             <h3 className="text-lg font-semibold text-foreground mb-2">对话已成功结束</h3>
                 <p className="text-sm text-muted-foreground mb-6">
-                  {isStudent ? '请前往学习档案填写三联表。下一次对话将按窗口期开放（周二 00:00 ~ 周五 24:00）。' : '您可以前往学习档案填写三联表，或者开始下一次对话训练。'}
+                  {isStudent ? '请前往学习档案完成本周作业。' : '您可以前往学习档案查看学生作业，或者开始下一次对话训练。'}
                 </p>
                 <div className="flex flex-col gap-2">
                   {!isStudent && (
@@ -961,7 +974,7 @@ export default function ConversationPage({ playgroundInstanceId }: { playgroundI
                       onClick={async () => { setShowSuccessModal(false); if (lastFinalizedSessionId) { await openThoughtRecord(lastFinalizedSessionId); } }}
                       className="w-full px-4 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors font-medium"
                     >
-                      {trSubmitted ? '查看三联表' : '填写三联表'}
+                      {trSubmitted ? '查看作业' : '填写作业'}
                     </button>
                   )}
                   <button onClick={()=>setShowSuccessModal(false)} className="w-full px-4 py-2 border rounded">知道了</button>
@@ -1067,7 +1080,7 @@ export default function ConversationPage({ playgroundInstanceId }: { playgroundI
       {trOpen && selectedHistorySession && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-card rounded-lg p-6 max-w-xl w-full mx-4">
-            <h3 className="text-lg font-semibold text-foreground mb-4">{trSubmitted ? '查看三联表' : '提交三联表'}</h3>
+            <h3 className="text-lg font-semibold text-foreground mb-4">{trSubmitted ? '查看作业' : '提交作业'}</h3>
             <div className="space-y-3">
               <textarea
                 placeholder="触发事件"
@@ -1100,11 +1113,17 @@ export default function ConversationPage({ playgroundInstanceId }: { playgroundI
                 <button
                   onClick={async ()=>{
                     try {
-                      const { createThoughtRecord } = await import('@/services/api/thoughtRecords');
-                      await createThoughtRecord({ sessionId: selectedHistorySession, ...trForm });
+                      const { getHomeworkSetBySession } = await import('@/services/api/homeworkSets');
+                      const { createHomeworkSubmission } = await import('@/services/api/homeworkSubmissions');
+                      const setRes = await getHomeworkSetBySession(selectedHistorySession);
+                      const setItem = (setRes as any)?.item;
+                      if (!setItem) throw new Error('未找到对应作业集');
+                      // 临时将三字段映射到 formData
+                      const formData: any = { triggeringEvent: trForm.triggeringEvent, thoughtsAndBeliefs: trForm.thoughtsAndBeliefs, consequences: trForm.consequences };
+                      await createHomeworkSubmission({ sessionId: selectedHistorySession, homeworkSetId: setItem.id, formData });
                       setTrSubmitted(true);
                       setTrOpen(false);
-                      setMsg('三联表已提交');
+                      setMsg('作业已提交');
                     } catch (e:any) {
                       setMsg(e?.message || '提交失败');
                     }

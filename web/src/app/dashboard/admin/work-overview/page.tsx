@@ -35,7 +35,7 @@ export default function AdminWorkOverviewPage() {
           <TopList list={data.unreadByAssistant || []} empty="暂无未读积压" />
           <div className="mt-3 text-right text-xs text-muted-foreground">建议：工单提醒/均衡分配</div>
         </Card>
-        <Card title="待批改三联表积压 Top">
+        <Card title="待批改作业积压 Top">
           <TopList list={data.pendingByAssistant || []} empty="暂无待批改积压" />
           <div className="mt-3 text-right text-xs text-muted-foreground">建议：优先安排批改/处理培训</div>
         </Card>
@@ -59,6 +59,7 @@ export default function AdminWorkOverviewPage() {
         </div>
         <div className="mt-4 flex justify-end gap-2 text-sm">
           <Link href="/dashboard/admin/overview" className="underline">查看概览</Link>
+          <Link href="/dashboard/admin/homework" className="underline">作业发布与管理</Link>
         </div>
       </Card>
     </div>

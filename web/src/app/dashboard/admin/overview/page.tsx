@@ -42,7 +42,7 @@ export default function AdminOverviewPage() {
       {/* KPI Row */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Kpi title="本周会话数" value={String(data.sessionsThisWeek)} icon={<span>💬</span>} subtitle="sessions" />
-        <Kpi title="三联表提交率" value={`${Math.round(data.trSubmitRate * 100)}%`} icon={<span>✅</span>} subtitle="TR 提交率" />
+        <Kpi title="作业提交率" value={`${Math.round(data.trSubmitRate * 100)}%`} icon={<span>✅</span>} subtitle="Homework 提交率" />
         <Kpi title="助教反馈达标率" value={`${Math.round(data.taFeedbackRate * 100)}%`} icon={<span>🧑‍🏫</span>} subtitle="Feedback rate" />
         <Kpi title="模板覆盖达标班级" value={`${Object.values(data.coverageByClass).filter(v=>v>=1).length}/${Object.keys(data.coverageByClass).length}`} icon={<span>📊</span>} subtitle="Coverage classes" />
       </div>
@@ -52,7 +52,7 @@ export default function AdminOverviewPage() {
         <Card title="助教未读消息积压 Top">
           <TopList list={data.unreadByAssistant || []} empty="暂无未读积压" />
         </Card>
-        <Card title="待批改三联表积压 Top">
+        <Card title="待批改作业积压 Top">
           <TopList list={data.pendingByAssistant || []} empty="暂无待批改积压" />
         </Card>
       </div>

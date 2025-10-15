@@ -82,7 +82,7 @@ export default function AdminPolicyPage() {
           <label className="text-sm">学生窗口开启（weekday, 默认2=周二 00:00）
             <input className="block w-full border rounded p-2 mt-1" value={kv.student_open_weekday||''} onChange={e=>setKv({ ...kv, student_open_weekday: e.target.value })} placeholder="2" />
           </label>
-          <label className="text-sm">学生三联表截止（weekday, 默认5=周五 24:00）
+          <label className="text-sm">学生作业截止（weekday, 默认5=周五 24:00）
             <input className="block w-full border rounded p-2 mt-1" value={kv.student_deadline_weekday||''} onChange={e=>setKv({ ...kv, student_deadline_weekday: e.target.value })} placeholder="5" />
           </label>
           <label className="text-sm">助教反馈截止（weekday, 默认7=周日 24:00）
@@ -94,7 +94,7 @@ export default function AdminPolicyPage() {
         </div>
       </SectionCard>
 
-      <SectionCard title="DDL 临时解锁（按周）" subtitle="按周为某人放宽 DDL（将同时放开“开始对话+三联表提交”）" icon={<span className="text-sm">⏳</span>}>
+      <SectionCard title="DDL 临时解锁（按周）" subtitle="按周为某人放宽 DDL（将同时放开“开始对话+作业提交”）" icon={<span className="text-sm">⏳</span>}>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <label className="text-sm">对象类型
             <select className="block w-full border rounded p-2 mt-1" value={form.subjectType} onChange={e=>setForm({ ...form, subjectType: e.target.value })}>
@@ -119,7 +119,7 @@ export default function AdminPolicyPage() {
           </label>
           <label className="text-sm">动作
             <select className="block w-full border rounded p-2 mt-1" value={form.action} onChange={e=>setForm({ ...form, action: e.target.value })}>
-              <option value="extend_student_tr">放宽学生三联表（含对话）</option>
+              <option value="extend_student_tr">放宽学生作业（含对话）</option>
               <option value="extend_assistant_feedback">放宽助教反馈</option>
             </select>
           </label>
@@ -166,7 +166,7 @@ export default function AdminPolicyPage() {
                       await httpPost('/admin/policy/session-override', { sessionId: s.id, action: 'extend_student_tr', until: v });
                       const r = await apiGet<any>('/admin/policy/session-override', { query: { studentEmail: sessEmail, templateKey: templateKeyFilter || undefined } });
                       setSessOverrides(r.overrides||[]);
-                      setToast({ message: '已设置三联表DDL', type: 'success' });
+                      setToast({ message: '已设置作业DDL', type: 'success' });
                     }}>设置三联表DDL</button>
                   </div>
                   <div className="flex items-center gap-2">
@@ -187,7 +187,7 @@ export default function AdminPolicyPage() {
         )}
       </SectionCard>
 
-      <SectionCard title="批量解锁（大规模事件应急）" subtitle="按范围批量放宽 DDL（extend_student_tr 同时放开对话+三联表）" icon={<span className="text-sm">🚀</span>}>
+      <SectionCard title="批量解锁（大规模事件应急）" subtitle="按范围批量放宽 DDL（extend_student_tr 同时放开对话+作业提交）" icon={<span className="text-sm">🚀</span>}>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <label className="text-sm">作用域
             <select className="block w-full border rounded p-2 mt-1" value={batch.scope} onChange={e=>setBatch({ ...batch, scope: e.target.value })}>
@@ -218,7 +218,7 @@ export default function AdminPolicyPage() {
           </label>
           <label className="text-sm">动作
             <select className="block w-full border rounded p-2 mt-1" value={batch.action} onChange={e=>setBatch({ ...batch, action: e.target.value })}>
-              <option value="extend_student_tr">放宽学生三联表（含对话权限）</option>
+              <option value="extend_student_tr">放宽学生作业（含对话权限）</option>
               <option value="extend_assistant_feedback">放宽助教反馈</option>
             </select>
           </label>

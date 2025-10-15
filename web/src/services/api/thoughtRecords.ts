@@ -1,15 +1,2 @@
-import { httpGet, httpPost } from "@/services/http";
-
-/**
- * createThoughtRecord - 创建三联表
- */
-export function createThoughtRecord(input: { sessionId: string; triggeringEvent: string; thoughtsAndBeliefs: string; consequences: string }) {
-  return httpPost<{ id: string }>("/thought-records", input);
-}
-
-/**
- * listThoughtRecords - 按会话查询三联表
- */
-export function listThoughtRecords(sessionId: string) {
-  return httpGet<{ items: any[] }>("/thought-records", { query: { sessionId } });
-}
+// 已移除三联表接口；请改用 homeworkSets/homeworkSubmissions 对接新通用作业。
+export {};

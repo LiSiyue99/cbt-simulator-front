@@ -236,7 +236,7 @@ export default function TechAssistantOverview() {
             <div className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground">待批改三联表</p>
+                  <p className="text-sm font-medium text-muted-foreground">待批改作业</p>
                   <p className="text-2xl font-bold text-foreground">
                     {loading ? '...' : stats?.pendingThoughtRecords || 0}
                   </p>
@@ -335,10 +335,10 @@ export default function TechAssistantOverview() {
                 <AlertCircle className="w-5 h-5 text-orange-600 mt-0.5" />
                 <div>
                   <p className="font-medium text-orange-900">
-                    有 {stats.pendingThoughtRecords} 份三联表待批改
+                    有 {stats.pendingThoughtRecords} 份作业待批改
                   </p>
                   <p className="text-sm text-orange-700">
-                    请及时查看学生提交的三联表并提供反馈
+                    请及时查看学生提交的作业并提供反馈
                   </p>
                 </div>
                 <div className="ml-auto">
@@ -356,7 +356,7 @@ export default function TechAssistantOverview() {
                     所有作业已完成批改
                   </p>
                   <p className="text-sm text-green-700">
-                    暂无待处理的三联表
+                    暂无待处理的作业
                   </p>
                 </div>
               </div>
@@ -456,7 +456,7 @@ export default function TechAssistantOverview() {
           <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
             <div className="bg-card rounded-lg p-6 w-full max-w-2xl mx-4 max-h-[80vh] overflow-auto">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold">待批改三联表</h3>
+                <h3 className="text-lg font-semibold">待批改作业</h3>
                 <button onClick={()=>setPendingOpen(false)} className="text-muted-foreground hover:text-foreground">✕</button>
               </div>
               {pendingList.length === 0 ? (
@@ -470,7 +470,7 @@ export default function TechAssistantOverview() {
                         <div className="text-xs text-muted-foreground">提交时间：{item.submittedAt ? new Date(item.submittedAt).toLocaleString('zh-CN') : '—'}</div>
                       </div>
                       <button
-                        onClick={()=>{ setPendingOpen(false); router.push(`/dashboard/student/${item.studentId}?sessionId=${item.sessionId}`); }}
+                        onClick={()=>{ setPendingOpen(false); router.push(`/dashboard/student/${item.studentId}?sessionId=${item.sessionId}&tab=homework`); }}
                         className="px-3 py-1 text-sm bg-primary text-primary-foreground rounded"
                       >前往批改</button>
                     </div>

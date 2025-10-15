@@ -47,10 +47,12 @@ export default function DashboardPage() {
     }
   }, [state.me, router]);
 
-  // Fetch dashboard todos
+  // Fetch dashboard todos（仅当确有 student 授权时才拉取学生任务；仅 assistant_class 不请求，避免 403）
   useEffect(() => {
     async function fetchTodos() {
-      if (!state.me || state.me.role !== 'student') return;
+      const hasStudentRole = !!state.me && (state.me.role === 'student' || (state.me.roles || []).includes('student'));
+      const canActAsStudent = hasStudentRole;
+      if (!state.me || !canActAsStudent) return;
 
       setTodosLoading(true);
       setTodosError(null);
@@ -81,11 +83,26 @@ export default function DashboardPage() {
 
   if (!state.me) return null;
 
-  // Route to appropriate dashboard based on role
+  // Route to appropriate dashboard based on role（assistant_tech 显示助教工作台；assistant_class 若兼任 student 则显示学生页）
   if (state.me.role === 'assistant_tech') {
     return <TechAssistantOverview />;
   }
   if (state.me.role === 'admin') return null;
+
+  // 仅行政助教：不展示学生任务视图，避免请求学生接口导致的 403
+  const onlyAssistantClass = state.me.role === 'assistant_class' && !(state.me.roles || []).includes('student');
+  if (onlyAssistantClass) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-background to-primary/5">
+        <div className="container mx-auto p-6 max-w-6xl">
+          <div className="bg-card/80 backdrop-blur-sm rounded-xl border border-border shadow-sm p-8">
+            <h1 className="text-xl font-semibold mb-2">工作概览</h1>
+            <p className="text-muted-foreground">您是行政助教身份。请前往“班级监控”查看作业包进度与反馈情况。</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const getGreeting = () => {
     const hour = currentTime.getHours();
@@ -153,7 +170,7 @@ export default function DashboardPage() {
                     </div>
                     <div>
                       <h1 className="text-2xl lg:text-3xl font-bold text-foreground">
-                        {getGreeting()}，{name}{state.me.role==='admin' ? '管理员' : '同学'}！
+                        {getGreeting()}，{name}{((state.me as any)?.role === 'admin') ? '管理员' : '同学'}！
                       </h1>
                       <p className="text-muted-foreground">
                         欢迎回到CBT训练平台 {studentId && `• 学号：${studentId}`} {assignedTechAsst && `• 负责助教：${assignedTechAsst.name}`}
@@ -327,7 +344,7 @@ export default function DashboardPage() {
 
                     <div className="space-y-2">
                       <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">三联表</span>
+                        <span className="text-muted-foreground">作业</span>
                         <span className="font-medium">
                           {summary.weeklyProgress.thoughtRecordsCompleted}/{summary.weeklyProgress.thoughtRecordsRequired}
                         </span>

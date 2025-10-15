@@ -16,12 +16,11 @@ import {
 import {
   getStudentSessions,
   getStudentHistory,
-  getThoughtRecordsBySession,
   listAssistantChat,
   sendAssistantChat,
   markAssistantChatRead
 } from "@/services/api/assistant";
-import { getAssistantStudentBrief } from "@/services/api/assistant";
+import { getAssistantStudentBrief, getHomeworkDetail } from "@/services/api/assistant";
 import { getSessionDetail } from "@/services/api/sessions";
 
 interface Student {
@@ -47,6 +46,8 @@ export default function StudentDetailPage() {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [feedbacks, setFeedbacks] = useState<any[]>([]);
   const [thoughtRecords, setThoughtRecords] = useState<any[]>([]);
+  const [homeworkDetail, setHomeworkDetail] = useState<any | null>(null);
+  const [homeworkLoading, setHomeworkLoading] = useState<boolean>(false);
   const [chatHistory, setChatHistory] = useState<any[] | null>(null);
   const [content, setContent] = useState("");
   const [chatList, setChatList] = useState<{ id: string; senderRole: string; content: string; createdAt: string }[]>([]);
@@ -102,31 +103,36 @@ export default function StudentDetailPage() {
   // pick session by query
   useEffect(() => {
     const sid = searchParams?.get('sessionId');
+    const tab = searchParams?.get('tab');
     if (sid) {
       setSelectedSessionId(sid);
-      setActiveTab('sessions');
+      if (tab === 'homework') setActiveTab('thoughtRecords'); else setActiveTab('sessions');
     }
   }, [searchParams]);
 
-  // Load feedbacks and thought records when session is selected
+  // Load session detail、chat、homework when session is selected
   useEffect(() => {
     async function loadFeedbacksAndThoughtRecords() {
       if (!selectedSessionId) return;
 
       try {
-        const [thoughtRecordRes, sessionDetail, chat] = await Promise.all([
-          getThoughtRecordsBySession(selectedSessionId),
+        setHomeworkLoading(true);
+        const [sessionDetail, chat, hw] = await Promise.all([
           getSessionDetail(selectedSessionId),
-          listAssistantChat(selectedSessionId, 1, chatPageSize)
+          listAssistantChat(selectedSessionId, 1, chatPageSize),
+          getHomeworkDetail(selectedSessionId).catch(()=>null)
         ]);
-        setThoughtRecords(thoughtRecordRes.items || []);
+        setThoughtRecords([]);
         setChatHistory(sessionDetail.chatHistory || []);
         setChatList((chat.items || []).reverse());
         setChatPage(1);
         setChatTotal((chat as any).total || (chat.items||[]).length);
+        setHomeworkDetail(hw);
         try { await markAssistantChatRead(selectedSessionId); } catch {}
       } catch (error) {
         console.error('Failed to load session data:', error);
+      } finally {
+        setHomeworkLoading(false);
       }
     }
     loadFeedbacksAndThoughtRecords();
@@ -269,7 +275,7 @@ export default function StudentDetailPage() {
                 <nav className="flex p-6 pb-0 overflow-x-auto">
                   {[
                     { key: 'sessions', label: '反馈管理', icon: MessageCircle },
-                    { key: 'thoughtRecords', label: '三联表', icon: ClipboardList },
+                    { key: 'thoughtRecords', label: '作业', icon: ClipboardList },
                     { key: 'chatHistory', label: '聊天记录', icon: MessageCircle },
                     { key: 'diary', label: 'AI日记', icon: BookOpen },
                     { key: 'activity', label: '活动列表', icon: Activity },
@@ -335,36 +341,56 @@ export default function StudentDetailPage() {
 
                 {activeTab === 'thoughtRecords' && (
                   <div>
-                    <h3 className="font-semibold text-foreground mb-4">三联表记录</h3>
+                    <h3 className="font-semibold text-foreground mb-4">作业（动态表单）</h3>
                     {!selectedSessionId ? (
-                      <p className="text-muted-foreground">请先从左侧选择一个会话查看三联表</p>
-                    ) : thoughtRecords.length > 0 ? (
-                      <div className="space-y-4">
-                        {thoughtRecords.map((record) => (
-                          <div key={record.id} className="p-4 bg-background/50 rounded-lg border border-border">
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                              <div>
-                                <h4 className="font-medium text-foreground mb-2">触发事件</h4>
-                                <p className="text-sm text-muted-foreground whitespace-pre-wrap">{record.triggeringEvent}</p>
-                              </div>
-                              <div>
-                                <h4 className="font-medium text-foreground mb-2">想法与信念</h4>
-                                <p className="text-sm text-muted-foreground whitespace-pre-wrap">{record.thoughtsAndBeliefs}</p>
-                              </div>
-                              <div>
-                                <h4 className="font-medium text-foreground mb-2">后果</h4>
-                                <p className="text-sm text-muted-foreground whitespace-pre-wrap">{record.consequences}</p>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2 mt-3 text-xs text-muted-foreground">
-                              <Clock className="w-3 h-3" />
-                              <span>提交时间: {new Date(record.createdAt).toLocaleString('zh-CN')}</span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
+                      <p className="text-muted-foreground">请先从左侧选择一个会话查看作业</p>
+                    ) : homeworkLoading ? (
+                      <p className="text-muted-foreground">加载中...</p>
+                    ) : !homeworkDetail || (!homeworkDetail.set && !homeworkDetail.submission) ? (
+                      <p className="text-muted-foreground">未配置此会话对应的作业集或暂无提交</p>
                     ) : (
-                      <p className="text-muted-foreground">该会话暂无三联表记录</p>
+                      <div className="space-y-4">
+                        {/* 作业集窗口期与标题 */}
+                        {homeworkDetail.set && (
+                          <div className="p-4 bg-background/50 rounded-lg border border-border">
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="font-medium text-foreground">{homeworkDetail.set.title || `第 ${sessions.find(s=>s.sessionId===selectedSessionId)?.sessionNumber || ''} 次作业`}</div>
+                              <div className="text-xs text-muted-foreground">
+                                学生窗口：{homeworkDetail.set.studentStartAt ? new Date(homeworkDetail.set.studentStartAt).toLocaleString('zh-CN') : '—'} ~ {homeworkDetail.set.studentDeadline ? new Date(homeworkDetail.set.studentDeadline).toLocaleString('zh-CN') : '—'}
+                              </div>
+                            </div>
+                            {homeworkDetail.set.description && (
+                              <div className="text-sm text-muted-foreground whitespace-pre-wrap">{homeworkDetail.set.description}</div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* 提交信息 */}
+                        {homeworkDetail.submission && (
+                          <div className="text-xs text-muted-foreground">提交时间：{new Date(homeworkDetail.submission.createdAt).toLocaleString('zh-CN')}</div>
+                        )}
+
+                        {/* 字段-值渲染 */}
+                        <div className="space-y-3">
+                          {(homeworkDetail.fields || []).map((f: any) => (
+                            <div key={f.key} className="p-3 bg-card/70 rounded border border-border">
+                              <div className="text-xs text-muted-foreground mb-1">{f.label}</div>
+                              <div className="text-sm text-foreground whitespace-pre-wrap">
+                                {(() => {
+                                  const v = f.value;
+                                  if (v === undefined) return <span className="text-muted-foreground">未提交</span>;
+                                  if (f.type === 'boolean') return v ? '是' : '否';
+                                  if (f.type === 'date') return v ? new Date(v as any).toLocaleDateString('zh-CN') : '';
+                                  return String(v);
+                                })()}
+                              </div>
+                              {f.helpText && (
+                                <div className="mt-1 text-xs text-muted-foreground">{f.helpText}</div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     )}
                   </div>
                 )}

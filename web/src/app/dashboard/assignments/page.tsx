@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/auth";
 import { getAssignmentsList } from "@/services/api/assignments";
-import { createThoughtRecord, listThoughtRecords } from "@/services/api/thoughtRecords";
+import { getHomeworkSetBySession } from "@/services/api/homeworkSets";
+import { createHomeworkSubmission, getHomeworkSubmission, type HomeworkFormData } from "@/services/api/homeworkSubmissions";
 import { listAssistantChat, sendAssistantChat, markAssistantChatRead } from "@/services/api/assistant";
 import {
   ClipboardCheck,
@@ -28,14 +29,7 @@ interface Assignment {
   chatCount: number;
 }
 
-interface ThoughtRecord {
-  id: string;
-  sessionId: string;
-  triggeringEvent: string;
-  thoughtsAndBeliefs: string;
-  consequences: string;
-  createdAt: string;
-}
+type ThoughtRecord = never; // 三联表已移除
 
 // 旧版问题/反馈已移除
 
@@ -46,10 +40,10 @@ export default function AssignmentsPage() {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [selectedSession, setSelectedSession] = useState<Assignment | null>(null);
 
-  // 三联表表单
-  const [trEvent, setTrEvent] = useState("");
-  const [trThoughts, setTrThoughts] = useState("");
-  const [trCons, setTrCons] = useState("");
+  // 动态作业表单
+  const [formFields, setFormFields] = useState<{ key: string; label: string; type: string; placeholder?: string; helpText?: string }[]>([]);
+  const [formData, setFormData] = useState<HomeworkFormData>({});
+  const [studentWindow, setStudentWindow] = useState<{ start?: string; end?: string }>({});
 
   // 数据状态
   const [trList, setTrList] = useState<ThoughtRecord[]>([]);
@@ -64,7 +58,10 @@ export default function AssignmentsPage() {
   const [chatLoadingMore, setChatLoadingMore] = useState<boolean>(false);
 
   useEffect(() => {
-    if (!state.me || state.me.role !== "student") return;
+    if (!state.me) return;
+    const hasStudentRole = state.me.role === 'student' || (state.me.roles || []).includes('student');
+    const hasStudentContext = !!state.me.currentVisitor?.instanceId;
+    if (!hasStudentRole && !hasStudentContext) return;
     const vid = state.me.currentVisitor?.instanceId ||
                (state.me.visitorInstanceIds && state.me.visitorInstanceIds[0]);
     setVisitorInstanceId(vid || null);
@@ -97,11 +94,15 @@ export default function AssignmentsPage() {
     async function refreshDetails() {
       if (!selectedSessionId) return;
       try {
-        const [tr, chat] = await Promise.all([
-          listThoughtRecords(selectedSessionId),
+        const [setRes, subRes, chat] = await Promise.all([
+          getHomeworkSetBySession(selectedSessionId),
+          getHomeworkSubmission(selectedSessionId),
           listAssistantChat(selectedSessionId, 1, chatPageSize),
         ]);
-        setTrList(tr.items || []);
+        const setItem = (setRes as any)?.item;
+        setFormFields(setItem?.formFields || []);
+        setStudentWindow({ start: setItem?.studentStartAt, end: setItem?.studentDeadline });
+        if ((subRes as any)?.item?.formData) setFormData((subRes as any).item.formData);
         setChatList((chat.items || []).reverse());
         setChatPage(1);
         setChatTotal((chat as any).total || (chat.items||[]).length);
@@ -138,43 +139,38 @@ export default function AssignmentsPage() {
     setSelectedSession(session);
   };
 
-  const submitTR = async () => {
-    if (!selectedSessionId || !trEvent || !trThoughts) return;
+  const submitHomework = async () => {
+    if (!selectedSessionId) return;
     setLoading(true);
     setMsg(null);
     try {
-      const result = await createThoughtRecord({
-        sessionId: selectedSessionId,
-        triggeringEvent: trEvent,
-        thoughtsAndBeliefs: trThoughts,
-        consequences: trCons
-      });
-
-      // Optimistically add the new thought record
-      const newTR = {
-        id: result.id,
-        sessionId: selectedSessionId,
-        triggeringEvent: trEvent,
-        thoughtsAndBeliefs: trThoughts,
-        consequences: trCons,
-        createdAt: new Date().toISOString()
-      };
-      setTrList(prev => [...prev, newTR]);
-
-      setTrEvent("");
-      setTrThoughts("");
-      setTrCons("");
-
-      // Update assignments list to reflect new count
+      const setRes = await getHomeworkSetBySession(selectedSessionId);
+      const setItem = (setRes as any)?.item;
+      if (!setItem) {
+        setMsg('当前会话暂无作业集');
+        setLoading(false);
+        return;
+      }
+      // 所有字段必填
+      for (const f of formFields) {
+        const v: any = (formData as any)[f.key];
+        if (v === undefined || v === null || (typeof v === 'string' && v.trim() === '')) {
+          setMsg(`请填写：${f.label}`);
+          setLoading(false);
+          return;
+        }
+      }
+      const r = await createHomeworkSubmission({ sessionId: selectedSessionId, homeworkSetId: setItem.id, formData });
+      // 更新列表计数为 1（只允许一次提交）
       setItems(prev => prev.map(item =>
         item.sessionId === selectedSessionId
-          ? { ...item, thoughtRecordCount: item.thoughtRecordCount + 1 }
+          ? { ...item, thoughtRecordCount: 1 }
           : item
       ));
-
-      setMsg("已成功提交三联表");
-    } catch (e: any) {
-      setMsg(e?.message || "提交失败");
+      setMsg('作业已提交');
+    } catch (e:any) {
+      const code = e?.code;
+      if (code === 'submission_exists') setMsg('你已提交过该次作业'); else setMsg(e?.message || '提交失败');
     } finally {
       setLoading(false);
     }
@@ -214,7 +210,7 @@ export default function AssignmentsPage() {
             <Calendar className="h-5 w-5 text-muted-foreground" />
           </div>
           <div className="text-sm text-muted-foreground">
-            按对话会话管理三联表和助教互动
+            按会话管理作业与助教互动
           </div>
         </div>
 
@@ -247,7 +243,7 @@ export default function AssignmentsPage() {
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div className="flex items-center space-x-1">
                   <FileText className="h-3 w-3" />
-                  <span>三联表 {session.thoughtRecordCount}</span>
+                  <span>作业 {session.thoughtRecordCount}</span>
                 </div>
                 <div className="flex items-center space-x-1">
                   <MessageSquare className="h-3 w-3" />
@@ -259,9 +255,9 @@ export default function AssignmentsPage() {
                 </div>
               </div>
 
-              {session.thoughtRecordCount === 0 && (
+                {session.thoughtRecordCount === 0 && (
                 <div className="mt-2 text-xs text-red-600 bg-red-50 px-2 py-1 rounded">
-                  待提交三联表
+                  待提交作业
                 </div>
               )}
             </div>
@@ -306,7 +302,7 @@ export default function AssignmentsPage() {
               <ClipboardCheck className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
               <h3 className="text-xl font-semibold text-foreground mb-2">选择对话会话</h3>
               <p className="text-muted-foreground">
-                从左侧列表中选择一个对话会话来填写三联表和与助教互动
+                从左侧列表中选择一个对话会话来完成作业并与助教互动
               </p>
             </div>
           </div>
@@ -314,116 +310,90 @@ export default function AssignmentsPage() {
           <div className="flex-1 overflow-y-auto p-6">
             <div className="max-w-4xl mx-auto space-y-8">
 
-              {/* 三联表部分 */}
+              {/* 动态作业表单 */}
               <div className="bg-card rounded-lg border border-border p-6">
                 <div className="flex items-center justify-between mb-6">
                   <div className="flex items-center space-x-3">
                     <FileText className="h-6 w-6 text-primary" />
                     <div>
-                      <h3 className="text-lg font-semibold text-foreground">CBT 三联表</h3>
-                      <p className="text-sm text-muted-foreground">分析对话中的情境、想法和后果</p>
+                      <h3 className="text-lg font-semibold text-foreground">本次作业</h3>
+                      {studentWindow.start && studentWindow.end && (
+                        <p className="text-sm text-muted-foreground">窗口：{new Date(studentWindow.start).toLocaleString('zh-CN')} ~ {new Date(studentWindow.end).toLocaleString('zh-CN')}</p>
+                      )}
                     </div>
                   </div>
                   <div className="text-sm text-muted-foreground">
-                    已提交: {trList.length} 份
+                    {selectedSession && (selectedSession.thoughtRecordCount > 0 ? '已提交' : '未提交')}
                   </div>
                 </div>
 
                 <div className="space-y-6">
-                  {trList.length === 0 ? (
-                    <>
-                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                        {/* 第一列：情境 */}
-                        <div className="space-y-3">
-                          <div className="text-center">
-                            <h4 className="text-lg font-semibold text-primary mb-1">情境 (Situation)</h4>
-                            <p className="text-xs text-muted-foreground">触发情绪反应的具体事件</p>
+                  <div className="space-y-4">
+                    {formFields.length === 0 ? (
+                      <div className="text-sm text-muted-foreground">本次作业暂未配置字段</div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {formFields.map((f) => (
+                          <div key={f.key} className="space-y-2">
+                            <label className="text-sm font-medium text-foreground block">{f.label}</label>
+                            {f.type === 'textarea' ? (
+                              <textarea
+                                value={(formData as any)[f.key] as any || ''}
+                                onChange={(e)=> setFormData(prev => ({ ...prev, [f.key]: e.target.value }))}
+                                placeholder={f.placeholder || ''}
+                                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
+                                rows={6}
+                                disabled={selectedSession?.thoughtRecordCount > 0}
+                              />
+                            ) : f.type === 'number' ? (
+                              <input type="number"
+                                value={String((formData as any)[f.key] ?? '')}
+                                onChange={(e)=> setFormData(prev => ({ ...prev, [f.key]: Number(e.target.value) }))}
+                                placeholder={f.placeholder || ''}
+                                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                                disabled={selectedSession?.thoughtRecordCount > 0}
+                              />
+                            ) : f.type === 'date' ? (
+                              <input type="date"
+                                value={String((formData as any)[f.key] ?? '')}
+                                onChange={(e)=> setFormData(prev => ({ ...prev, [f.key]: e.target.value }))}
+                                placeholder={f.placeholder || ''}
+                                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                                disabled={selectedSession?.thoughtRecordCount > 0}
+                              />
+                            ) : f.type === 'boolean' ? (
+                              <select
+                                value={String((formData as any)[f.key] ?? '')}
+                                onChange={(e)=> setFormData(prev => ({ ...prev, [f.key]: e.target.value === 'true' }))}
+                                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                                disabled={selectedSession?.thoughtRecordCount > 0}
+                              >
+                                <option value="">请选择</option>
+                                <option value="true">是</option>
+                                <option value="false">否</option>
+                              </select>
+                            ) : (
+                              <input
+                                value={String((formData as any)[f.key] ?? '')}
+                                onChange={(e)=> setFormData(prev => ({ ...prev, [f.key]: e.target.value }))}
+                                placeholder={f.placeholder || ''}
+                                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                                disabled={selectedSession?.thoughtRecordCount > 0}
+                              />
+                            )}
+                            {f.helpText && <p className="text-xs text-muted-foreground">{f.helpText}</p>}
                           </div>
-                          <div className="bg-background rounded-lg border border-border p-4 min-h-[200px]">
-                            <label className="text-sm font-medium text-foreground block mb-2">触发事件</label>
-                            <textarea
-                              value={trEvent}
-                              onChange={(e) => setTrEvent(e.target.value)}
-                              placeholder="具体描述发生了什么事情？何时？何地？涉及哪些人？"
-                              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
-                              rows={6}
-                            />
-                          </div>
-                        </div>
-
-                        {/* 第二列：想法 */}
-                        <div className="space-y-3">
-                          <div className="text-center">
-                            <h4 className="text-lg font-semibold text-primary mb-1">想法 (Thoughts)</h4>
-                            <p className="text-xs text-muted-foreground">当时脑海中的自动化思维</p>
-                          </div>
-                          <div className="bg-background rounded-lg border border-border p-4 min-h-[200px]">
-                            <label className="text-sm font-medium text-foreground block mb-2">自动化思维与信念</label>
-                            <textarea
-                              value={trThoughts}
-                              onChange={(e) => setTrThoughts(e.target.value)}
-                              placeholder="当时你心里在想什么？有什么担心、判断或预测？"
-                              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
-                              rows={6}
-                            />
-                          </div>
-                        </div>
-
-                        {/* 第三列：后果 */}
-                        <div className="space-y-3">
-                          <div className="text-center">
-                            <h4 className="text-lg font-semibold text-primary mb-1">后果 (Consequences)</h4>
-                            <p className="text-xs text-muted-foreground">产生的情绪反应和行为</p>
-                          </div>
-                          <div className="bg-background rounded-lg border border-border p-4 min-h-[200px]">
-                            <label className="text-sm font-medium text-foreground block mb-2">情绪和行为反应</label>
-                            <textarea
-                              value={trCons}
-                              onChange={(e) => setTrCons(e.target.value)}
-                              placeholder="你感受到了什么情绪？做了什么行为？对身体有什么影响？"
-                              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
-                              rows={6}
-                            />
-                          </div>
-                        </div>
+                        ))}
                       </div>
-
-                      <button
-                        onClick={submitTR}
-                        disabled={loading || !trEvent || !trThoughts}
-                        className="w-full bg-primary text-primary-foreground rounded-lg py-3 px-4 hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
-                      >
-                        {loading ? "提交中..." : "提交CBT三联表"}
-                      </button>
-                    </>
-                  ) : (
-                    <div className="space-y-4">
-                    {trList.map((tr, index) => (
-                      <div key={tr.id} className="p-4 bg-background rounded-lg border border-border">
-                        <div className="flex items-center justify-between mb-3">
-                          <span className="text-sm font-medium text-primary">三联表 #{index + 1}</span>
-                          <span className="text-xs text-muted-foreground">
-                            {new Date(tr.createdAt).toLocaleString('zh-CN')}
-                          </span>
-                        </div>
-                        <div className="space-y-2 text-sm">
-                          <div>
-                            <span className="font-medium text-foreground">情境：</span>
-                            <span className="text-muted-foreground">{tr.triggeringEvent}</span>
-                          </div>
-                          <div>
-                            <span className="font-medium text-foreground">想法：</span>
-                            <span className="text-muted-foreground">{tr.thoughtsAndBeliefs}</span>
-                          </div>
-                          <div>
-                            <span className="font-medium text-foreground">后果：</span>
-                            <span className="text-muted-foreground">{tr.consequences}</span>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                    </div>
-                  )}
+                    )}
+                    <button
+                      onClick={submitHomework}
+                      disabled={loading || formFields.length === 0 || (selectedSession?.thoughtRecordCount ?? 0) > 0}
+                      className="w-full bg-primary text-primary-foreground rounded-lg py-3 px-4 hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+                    >
+                      {loading ? '提交中...' : '提交作业'}
+                    </button>
+                  </div>
                 </div>
               </div>
 

@@ -45,19 +45,7 @@ export function getStudentHistory(studentId: string) {
   return httpGet<{ diary: any[]; activity: any[]; homework: any[]; ltm: any[] }>(`/assistant/students/${studentId}/history`);
 }
 
-/**
- * createAssistantFeedback - 助教创建反馈
- */
-export function createAssistantFeedback(input: { sessionId: string; content: string }) {
-  return httpPost<{ id: string }>("/assistant/feedback", input);
-}
-
-/**
- * listAssistantFeedback - 列出会话反馈
- */
-export function listAssistantFeedback(sessionId: string) {
-  return httpGet<{ items: { id: string; sessionId: string; assistantId?: string; content: string; status?: string; createdAt: string }[] }>("/assistant/feedback", { query: { sessionId } });
-}
+// 旧 feedback 接口已移除，改用双向聊天（/assistant/chat）
 
 // Assistant-Student Chat
 export function listAssistantChat(sessionId: string, page = 1, pageSize = 50) {
@@ -88,19 +76,7 @@ export function getAssistantDashboardStats() {
 /**
  * getThoughtRecordsBySession - 获取会话的三联表记录（助教权限）
  */
-export function getThoughtRecordsBySession(sessionId: string) {
-  return httpGet<{
-    items: {
-      id: string;
-      sessionId: string;
-      triggeringEvent: string;
-      thoughtsAndBeliefs: string;
-      consequences: string;
-      createdAt: string;
-      updatedAt: string;
-    }[];
-  }>(`/thought-records/by-session/${sessionId}`);
-}
+// 已移除：三联表助教查看接口
 
 export function listEditableTemplates() {
   return httpGet<{ items: { templateKey: string; name: string; brief: string; corePersona: any; updatedAt: string }[] }>("/assistant/templates");
@@ -118,6 +94,24 @@ export function getPendingThoughtRecords() {
 
 export function getUnreadMessageSessions() {
   return httpGet<{ items: { sessionId: string; sessionNumber: number; studentId: string; studentName: string; unreadCount: number }[] }>("/assistant/unread-message-sessions");
+}
+
+// 助教查看单次会话的作业提交（仅提交体）
+export function getHomeworkSubmission(sessionId: string) {
+  return httpGet<{ item: { id: string; homeworkSetId: string; sessionId: string; studentId: string; formData: Record<string, any>; createdAt: string; updatedAt: string } | null }>(
+    "/assistant/homework/submission",
+    { query: { sessionId } }
+  );
+}
+
+// 助教查看单次会话作业详情（作业集定义 + 提交体 + 合并字段）
+export function getHomeworkDetail(sessionId: string) {
+  return httpGet<{
+    session: { sessionId: string; sessionNumber: number; createdAt: string };
+    set: any | null;
+    submission: { id: string; homeworkSetId: string; sessionId: string; studentId: string; formData: Record<string, any>; createdAt: string; updatedAt: string } | null;
+    fields: Array<{ key: string; label: string; type: string; placeholder?: string; helpText?: string; value?: any }>;
+  }>("/assistant/homework/detail", { query: { sessionId } });
 }
 
 export function getAdminOverview() {

@@ -63,10 +63,12 @@ setTemplateBrief(tpl?.brief || '');
 
 ---
 
-## 学习档案（src/services/api/assignments.ts & thoughtRecords.ts）
+## 学习档案（src/services/api/assignments.ts & homeworkSets.ts & homeworkSubmissions.ts）
 - getAssignmentsList(visitorInstanceId) → GET `/assignments/list` → `{ items: [{ sessionId, sessionNumber, createdAt, homework[], thoughtRecordCount, chatCount }] }`
-- createThoughtRecord(input) → POST `/thought-records` → `{ id }`
-- listThoughtRecords(sessionId) → GET `/thought-records?sessionId=...`
+- getHomeworkSetBySession(sessionId) → GET `/homework/sets/by-session` → `{ item }`
+- createHomeworkSubmission({ sessionId, homeworkSetId, formData }) → POST `/homework/submissions` → `{ ok, id }`（仅一次提交）
+- 重复提交将返回 409：`{ error: 'conflict', code: 'submission_exists' }`
+- getHomeworkSubmission(sessionId) → GET `/homework/submissions` → `{ item }`
 - getDashboardTodos(visitorInstanceId) → GET `/dashboard/todos` → `{ items, summary }`
 
 ---
@@ -83,7 +85,9 @@ setTemplateBrief(tpl?.brief || '');
   - markAssistantChatRead(sessionId) → POST `/assistant/chat/read` → `{ ok: true }`
 - getAssistantDashboardStats() → GET `/assistant/dashboard-stats`（包含 `unreadMessages`）
 - getUnreadMessageSessions() → GET `/assistant/unread-message-sessions`
-- getPendingThoughtRecords() → GET `/assistant/pending-thought-records`
+- getPendingThoughtRecords() → GET `/assistant/pending-thought-records`（待批改作业）
+- getHomeworkSubmission(sessionId) → GET `/assistant/homework/submission?sessionId=...` → `{ item | null }`
+- getHomeworkDetail(sessionId) → GET `/assistant/homework/detail?sessionId=...` → `{ session, set, submission, fields }`
 
 ---
 
@@ -92,6 +96,13 @@ setTemplateBrief(tpl?.brief || '');
 - getClassStudentSessions(studentId) → GET `/assistant-class/students/{id}/sessions`
 - getClassCompliance(week?) → GET `/assistant-class/compliance?week=YYYY-WW`（返回每条记录带 `missCountUptoWeek`）
 - getProgressBySession(sessionNumber) → GET `/assistant-class/progress-by-session?sessionNumber=N`（返回每位学生的 `hasSession/hasThoughtRecord/missCountUptoSession`）
+- getClassHomeworkSets() → GET `/assistant-class/homework/sets`
+- getHomeworkSetProgress(setId) → GET `/assistant-class/homework/sets/{id}/progress`
+  - 返回：`{ items: [{ studentId, name?, userId, sessionNumber, hasSubmission, sessionDurationMinutes, assistantFeedback }] }`
+  - 说明：`sessionDurationMinutes` 为该次会话完成时长（分钟，未完成 `null`）；`assistantFeedback` 为作业提交后的最新助教回复内容。
+- getHomeworkSetFeedback(setId, studentId, page?, pageSize?) → GET `/assistant-class/homework/sets/{id}/feedback`
+  - 返回：`{ items: [{ speaker: 'assistant'|'student', content, timestamp }], page, pageSize, total }`
+  - 用于“查看对话”滑动窗口，按时间升序分页。
 
 ---
 
@@ -99,7 +110,7 @@ setTemplateBrief(tpl?.brief || '');
 - ensurePlayground() → POST `/playground/ensure`
 - listPlaygroundInstances() → GET `/playground/instances`
 - getPlaygroundLtm(visitorInstanceId) → GET `/playground/ltm`
-- 重要权限说明：`student` 学生角色被后端明确禁止访问所有 `/playground/*` 接口（403），前端也不应在学生界面展示 Playground 能力。
+- 重要权限说明：`student` 学生角色被后端明确禁止访问所有 `/playground/*` 接口（403）。仅行政助教用户在“工作概览”不请求学生待办接口以避免 403。
 
 时序图（学生被拒绝访问 Playground）
 ```mermaid
@@ -130,13 +141,13 @@ sequenceDiagram
 - 规则与日历：
   - getAdminTimeWindow/saveAdminTimeWindow → GET/POST `/admin/policy/time-window`
   - createDdlOverride/listDdlOverrides → POST/GET `/admin/policy/ddl-override`
-    - 重要：当 `action = extend_student_tr` 时，表示放开“对话开始+三联表提交”两者的限制（按 `until` 生效）。
+- 重要：当 `action = extend_student_tr` 时，表示放开“对话开始+作业提交”两者的限制（按 `until` 生效）。
   - createBatchDdlOverride/listRecentDdlOverrides → POST/GET `/admin/policy/ddl-override/batch|recent`
   - getSessionOverrides/createSessionOverride/listRecentSessionOverrides → GET/POST/GET `/admin/policy/session-override[|/recent]`
 - 模板管理（新增）：
 示例
 ```ts
-// 1) 批量 DDL 豁免：本周为多名学生放宽“对话+三联表”封窗
+// 1) 批量 DDL 豁免：本周为多名学生放宽“对话+作业提交”封窗
 await createBatchDdlOverride([
   { subjectId: stu1, weekKey: '2025-40', action: 'extend_student_tr', until: '2025-10-12T16:00:00.000Z' },
   { subjectId: stu2, weekKey: '2025-40', action: 'extend_student_tr', until: '2025-10-12T16:00:00.000Z' },

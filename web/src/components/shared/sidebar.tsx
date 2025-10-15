@@ -43,7 +43,7 @@ const studentSidebarItems: SidebarItem[] = [
     name: "学习档案",
     href: "/dashboard/assignments",
     icon: ClipboardList,
-    description: "三联表填写与助教互动"
+    description: "完成作业与助教互动"
   }
 ];
 
@@ -111,28 +111,37 @@ export function Sidebar() {
     ? ((state.me as any).roles as string[])
     : [primaryRole];
   const hasAssistantClass = roles.includes('assistant_class');
+  const hasStudentRole = roles.includes('student');
+  const hasStudentContext = !!state.me.currentVisitor?.instanceId;
 
   const sidebarItems = (() => {
     if (primaryRole === 'assistant_tech') return [
       ...techAssistantSidebarItems,
       { name: "AI访客体验", href: "/dashboard/playground", icon: BarChart3, description: "10个模板的真实体验环境" }
     ];
-    if (primaryRole === 'assistant_class' || primaryRole === 'admin') {
+    if (primaryRole === 'assistant_class') {
+      // 行政助教：仅当确有 student 授权时展示学生菜单；不再因 currentVisitor 兜底展示学生功能
+      return hasStudentRole
+        ? [...studentSidebarItems, classAssistantItem]
+        : [
+            { name: "工作概览", href: "/dashboard", icon: Home, description: "查看工作概览和统计数据" },
+            classAssistantItem,
+          ];
+    }
+    if (primaryRole === 'admin') {
       return [
-        { name: "工作概览", href: primaryRole === 'admin' ? "/dashboard/admin/work-overview" : "/dashboard", icon: Home, description: "查看工作概览和统计数据" },
+        { name: "工作概览", href: "/dashboard/admin/work-overview", icon: Home, description: "查看工作概览和统计数据" },
         classAssistantItem,
         { name: "AI访客体验", href: "/dashboard/playground", icon: BarChart3, description: "10个模板的真实体验环境" },
-        ...(primaryRole === 'admin' ? [
-          { name: "宏观情况概览", href: "/dashboard/admin/overview", icon: BarChart3, description: "全局态势与配置入口" }
-          ,{ name: "规则与日历", href: "/dashboard/admin/policy", icon: Calendar, description: "时间窗与临时解锁" }
-        ,{ name: "人员与分配", href: "/dashboard/admin/people", icon: Users, description: "用户与分配管理" }
-        ,{ name: "模板管理", href: "/dashboard/admin/templates", icon: BookOpen, description: "编辑所有来访者模板" }
-        ] : [])
+        { name: "宏观情况概览", href: "/dashboard/admin/overview", icon: BarChart3, description: "全局态势与配置入口" },
+        { name: "规则与日历", href: "/dashboard/admin/policy", icon: Calendar, description: "时间窗与临时解锁" },
+        { name: "人员与分配", href: "/dashboard/admin/people", icon: Users, description: "用户与分配管理" },
+        { name: "模板管理", href: "/dashboard/admin/templates", icon: BookOpen, description: "编辑所有来访者模板" },
+        { name: "作业发布与管理", href: "/dashboard/admin/homework", icon: ClipboardList, description: "为班级发包并设置窗口期" },
       ];
     }
     // primary student：如果拥有行政助教授权，追加行政助教入口
-    if (primaryRole === 'student') {
-      // 学生+行政助教：只展示班级监控，不开放AI访客体验
+    if (primaryRole === 'student' || hasStudentRole) {
       return hasAssistantClass ? [...studentSidebarItems, classAssistantItem] : studentSidebarItems;
     }
     return [];
