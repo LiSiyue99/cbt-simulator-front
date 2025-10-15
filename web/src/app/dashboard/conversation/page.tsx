@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/auth";
 import {
   getLastSession,
@@ -36,7 +37,9 @@ interface Session {
   lastMessage?: { speaker: 'user' | 'ai'; content: string; timestamp?: string };
 }
 
-export default function ConversationPage({ playgroundInstanceId }: { playgroundInstanceId?: string | null }) {
+export default function ConversationPage() {
+  const searchParams = useSearchParams();
+  const playgroundInstanceId = searchParams.get("playgroundInstanceId");
   const { state } = useAuth();
   const [visitorInstanceId, setVisitorInstanceId] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
