@@ -1,0 +1,12 @@
+node_modules
+npm-debug.log
+.git
+.gitignore
+.next
+out
+build
+.env*
+*.local
+*.log
+**/.cursor
+**/.agent-tools
