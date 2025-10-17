@@ -9,8 +9,9 @@
 ---
 
 ## 认证与当前用户
-- POST /auth/request-code → 请求验证码
-- POST /auth/verify-code → 校验验证码、获取 token
+- POST /auth/direct-login → 白名单直登（默认登录方式）
+- POST /auth/request-code → 请求验证码（备用）
+- POST /auth/verify-code → 校验验证码、获取 token（备用）
 - GET /me → 当前用户信息（返回 `roles/classScopes` 等增强信息）
 
 ---
@@ -70,6 +71,7 @@ setTemplateBrief(tpl?.brief || '');
 - 重复提交将返回 409：`{ error: 'conflict', code: 'submission_exists' }`
 - getHomeworkSubmission(sessionId) → GET `/homework/submissions` → `{ item }`
 - getDashboardTodos(visitorInstanceId) → GET `/dashboard/todos` → `{ items, summary }`
+  - 说明：Dashboard 的“本周对话/第 N 次作业”待办仅在存在对应的作业包时出现，并且 `dueDate = homework_sets.studentDeadline`。
 
 ---
 

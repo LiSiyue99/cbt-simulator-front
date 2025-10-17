@@ -117,7 +117,7 @@ export function Sidebar() {
   const sidebarItems = (() => {
     if (primaryRole === 'assistant_tech') return [
       ...techAssistantSidebarItems,
-      { name: "AI访客体验", href: "/dashboard/playground", icon: BarChart3, description: "10个模板的真实体验环境" }
+      // Playground 暂不发布：隐藏导航项
     ];
     if (primaryRole === 'assistant_class') {
       // 行政助教：仅当确有 student 授权时展示学生菜单；不再因 currentVisitor 兜底展示学生功能
@@ -132,7 +132,7 @@ export function Sidebar() {
       return [
         { name: "工作概览", href: "/dashboard/admin/work-overview", icon: Home, description: "查看工作概览和统计数据" },
         classAssistantItem,
-        { name: "AI访客体验", href: "/dashboard/playground", icon: BarChart3, description: "10个模板的真实体验环境" },
+        // Playground 暂不发布：隐藏导航项
         { name: "宏观情况概览", href: "/dashboard/admin/overview", icon: BarChart3, description: "全局态势与配置入口" },
         { name: "规则与日历", href: "/dashboard/admin/policy", icon: Calendar, description: "时间窗与临时解锁" },
         { name: "人员与分配", href: "/dashboard/admin/people", icon: Users, description: "用户与分配管理" },

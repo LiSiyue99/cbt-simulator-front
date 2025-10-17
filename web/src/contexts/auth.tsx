@@ -41,6 +41,7 @@ const AuthContext = createContext<{
   state: AuthState;
   loginRequestCode: (email: string) => Promise<{ ok: boolean; code?: string }>;
   loginVerifyCode: (email: string, code: string) => Promise<void>;
+  loginDirect: (email: string) => Promise<void>;
   logout: () => void;
 } | null>(null);
 
@@ -92,12 +93,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setState((s) => ({ ...s, token: res.token, loading: true }));
   }, []);
 
+  const loginDirect = useCallback(async (email: string) => {
+    const res = await httpPost<{ token: string; role: UserRole }>("/auth/direct-login", { email });
+    window.localStorage.setItem("token", res.token);
+    setState((s) => ({ ...s, token: res.token, loading: true }));
+  }, []);
+
   const logout = useCallback(() => {
     window.localStorage.removeItem("token");
     setState({ token: null, me: null, loading: false, error: null });
   }, []);
 
-  const value = useMemo(() => ({ state, loginRequestCode, loginVerifyCode, logout }), [state, loginRequestCode, loginVerifyCode, logout]);
+  const value = useMemo(() => ({ state, loginRequestCode, loginVerifyCode, loginDirect, logout }), [state, loginRequestCode, loginVerifyCode, loginDirect, logout]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
