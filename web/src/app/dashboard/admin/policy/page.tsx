@@ -21,7 +21,6 @@ function SectionCard({ title, subtitle, icon, children }: { title: string; subti
 }
 
 export default function AdminPolicyPage() {
-  const [kv, setKv] = useState<any>({});
   const [loading, setLoading] = useState(true);
   const [ovItems, setOvItems] = useState<any[]>([]);
   const [form, setForm] = useState({ subjectType: 'student', subjectEmail: '', overrideDate: '', weekKey: '', action: 'extend_student_tr', until: '', reason: '' });
@@ -40,8 +39,6 @@ export default function AdminPolicyPage() {
   useEffect(() => {
     async function load() {
       try {
-        const a = await httpGet<{ items: any }>('/admin/policy/time-window');
-        setKv((a as any).items || {});
         const b = await httpGet<{ items: any[] }>('/admin/policy/ddl-override');
         setOvItems((b as any).items || []);
         const c = await httpGet<{ items: any[] }>('/admin/policy/session-override/recent');
@@ -52,15 +49,6 @@ export default function AdminPolicyPage() {
     }
     load();
   }, []);
-
-  async function saveKv() {
-    try {
-      await httpPost('/admin/policy/time-window', kv);
-      setToast({ message: '时间窗已保存', type: 'success' });
-    } catch (e) {
-      setToast({ message: '保存失败，请重试', type: 'error' });
-    }
-  }
 
   async function createOverride() {
     try {
@@ -77,22 +65,7 @@ export default function AdminPolicyPage() {
 
   return (
     <div className="p-6 space-y-6">
-      <SectionCard title="时间窗设置" subtitle="配置学生/助教每周窗口期（学生：周二00:00开放；周五24:00截止；助教反馈：周日24:00截止）。可在此修改开启weekday。" icon={<span className="text-sm">🗓️</span>}>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <label className="text-sm">学生窗口开启（weekday, 默认2=周二 00:00）
-            <input className="block w-full border rounded p-2 mt-1" value={kv.student_open_weekday||''} onChange={e=>setKv({ ...kv, student_open_weekday: e.target.value })} placeholder="2" />
-          </label>
-          <label className="text-sm">学生作业截止（weekday, 默认5=周五 24:00）
-            <input className="block w-full border rounded p-2 mt-1" value={kv.student_deadline_weekday||''} onChange={e=>setKv({ ...kv, student_deadline_weekday: e.target.value })} placeholder="5" />
-          </label>
-          <label className="text-sm">助教反馈截止（weekday, 默认7=周日 24:00）
-            <input className="block w-full border rounded p-2 mt-1" value={kv.assistant_deadline_weekday||''} onChange={e=>setKv({ ...kv, assistant_deadline_weekday: e.target.value })} placeholder="7" />
-          </label>
-        </div>
-        <div className="mt-4 text-right">
-          <button onClick={saveKv} className="px-3 py-2 rounded bg-primary text-primary-foreground hover:opacity-90">保存</button>
-        </div>
-      </SectionCard>
+      {/* 已移除时间窗设置 Section：保留 DDL 解锁入口 */}
 
       <SectionCard title="DDL 临时解锁（按周）" subtitle="按周为某人放宽 DDL（将同时放开“开始对话+作业提交”）" icon={<span className="text-sm">⏳</span>}>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

@@ -141,32 +141,13 @@ sequenceDiagram
   - addAssistantStudentAdmin(payload) → POST `/admin/assistant-students`
   - removeAssistantStudentAdmin(id) → DELETE `/admin/assistant-students/{id}`
 - 规则与日历：
-  - getAdminTimeWindow/saveAdminTimeWindow → GET/POST `/admin/policy/time-window`
+  - getAdminTimeWindow/saveAdminTimeWindow → GET/POST `/admin/policy/time-window`（页面已弱化）
   - createDdlOverride/listDdlOverrides → POST/GET `/admin/policy/ddl-override`
-- 重要：当 `action = extend_student_tr` 时，表示放开“对话开始+作业提交”两者的限制（按 `until` 生效）。
   - createBatchDdlOverride/listRecentDdlOverrides → POST/GET `/admin/policy/ddl-override/batch|recent`
   - getSessionOverrides/createSessionOverride/listRecentSessionOverrides → GET/POST/GET `/admin/policy/session-override[|/recent]`
-- 模板管理（新增）：
-示例
-```ts
-// 1) 批量 DDL 豁免：本周为多名学生放宽“对话+作业提交”封窗
-await createBatchDdlOverride([
-  { subjectId: stu1, weekKey: '2025-40', action: 'extend_student_tr', until: '2025-10-12T16:00:00.000Z' },
-  { subjectId: stu2, weekKey: '2025-40', action: 'extend_student_tr', until: '2025-10-12T16:00:00.000Z' },
-]);
-
-// 2) Admin/People：获取助教负责学生（用于展示 name + 模板 tag）
-const { items } = await getAssistantStudentsAdmin(assistantId);
-// item: { id, assistantId, studentId, visitorInstanceId, studentName, studentEmail, visitorName, templateKey }
-
-// 3) 批量改派
-await bulkAssign({ items: [
-  { studentId: 'stu-1', assistantId: 'assistant-A' },
-  { studentId: 'stu-2', assistantId: 'assistant-B', templateKey: '4' },
-]});
-```
-  - getAdminTemplates() → GET `/admin/templates` → `{ items: { templateKey, name, brief, corePersona, updatedAt }[] }`
-  - updateAdminTemplate(templateKey, { name?, brief?, corePersona? }) → PUT `/admin/templates/{templateKey}` → `{ ok, item }`
+- Homework 批量解锁（新增）：
+  - bulkStudentOverride(setId, { action, until, reason? }) → POST `/admin/homework/sets/{id}/ddl-override/students`
+  - bulkAssistantOverride(setId, { action, until, reason? }) → POST `/admin/homework/sets/{id}/ddl-override/assistants`
 
 ---
 

@@ -31,9 +31,21 @@ export function setTokenProvider(provider: () => string | null) {
   tokenProvider = provider;
 }
 
+/**
+ * buildUrl - 构造请求 URL
+ * 兼容性：若 `NEXT_PUBLIC_API_BASE_URL` 缺失或非法，则在
+ * - 本地开发回退到 `http://localhost:3000`
+ * - 生产环境回退到 `https://api.aiforcbt.online`
+ * 并使用 `new URL(path, base)` 的两参重载，避免 `new URL('/x')` 抛出 Invalid URL。
+ */
 function buildUrl(url: string, query?: RequestOptions["query"]): string {
-  const base = (process.env.NEXT_PUBLIC_API_BASE_URL || "").replace(/\/$/, "");
-  const u = new URL(base + url);
+  const envBase = (process.env.NEXT_PUBLIC_API_BASE_URL || "").trim();
+  const hasProtocol = /^https?:\/\//i.test(envBase);
+  const runtimeIsLocalhost = typeof window !== "undefined" && /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname);
+  const fallbackBase = runtimeIsLocalhost ? "http://localhost:3000" : "https://api.aiforcbt.online";
+  const base = (hasProtocol ? envBase : fallbackBase).replace(/\/$/, "");
+
+  const u = new URL(url, base);
   if (query) {
     Object.entries(query).forEach(([k, v]) => {
       if (v !== undefined && v !== null) u.searchParams.set(k, String(v));
@@ -62,12 +74,14 @@ async function withTimeout<T>(p: Promise<T>, timeoutMs = 30000): Promise<T> {
  */
 export async function httpRequest<T>(method: HttpMethod, url: string, options: RequestOptions = {}): Promise<T> {
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
     ...(options.headers || {}),
   };
 
   const token = tokenProvider ? tokenProvider() : null;
   if (token) headers["Authorization"] = `Bearer ${token}`;
+  // 仅当有 body 时设置 JSON Content-Type，避免空体的 DELETE/GET 触发解析错误
+  const hasBody = options.body !== undefined;
+  if (hasBody) headers["Content-Type"] = "application/json";
 
   const fullUrl = buildUrl(url, options.query);
 
@@ -82,7 +96,7 @@ export async function httpRequest<T>(method: HttpMethod, url: string, options: R
       resp = await withTimeout(fetch(fullUrl, {
         method,
         headers,
-        body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+        body: hasBody ? JSON.stringify(options.body) : undefined,
         cache: "no-store",
       }), options.timeoutMs);
       if (resp.status !== 429) break;
@@ -130,4 +144,8 @@ export function httpPost<T>(url: string, body?: unknown, options?: Omit<RequestO
  */
 export function httpPut<T>(url: string, body?: unknown, options?: Omit<RequestOptions, "body">) {
   return httpRequest<T>("PUT", url, { ...(options || {}), body });
+}
+
+export function httpDelete<T>(url: string, options?: Omit<RequestOptions, "body">) {
+  return httpRequest<T>("DELETE", url, options);
 }
