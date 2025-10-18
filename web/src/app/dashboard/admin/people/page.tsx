@@ -30,7 +30,7 @@ function TabButton({ active, children, onClick }: { active: boolean; children: a
 
 function UsersTab(){
   const [list, setList] = useState<any[]>([]);
-  const [form, setForm] = useState<any>({ role: 'student', status: 'active' });
+  const [form, setForm] = useState<any>({ role: 'student', status: 'active', templateKey: '' });
   const [filter, setFilter] = useState<any>({});
   const [editing, setEditing] = useState<any|null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -43,7 +43,17 @@ function UsersTab(){
   const [total, setTotal] = useState<number>(0);
   useEffect(()=>{ load(); },[page, filter]);
   async function load(){ const res = await getAdminUsers({ ...filter, page, pageSize } as any); setList(res.items); setTotal((res as any).total||0); }
-  async function create(){ await createAdminUser(form); setForm({ role:'student', status:'active' }); await load(); }
+  async function create(){
+    const res = await createAdminUser(form);
+    try {
+      // 若为学生且填写了模板键，则自动为其创建实例并绑定助教
+      if ((form.role === 'student') && form.templateKey) {
+        await assignTemplate({ studentId: (res as any).id, templateKey: String(form.templateKey) });
+      }
+    } catch {}
+    setForm({ role:'student', status:'active', templateKey: '' });
+    await load();
+  }
   async function saveEdit(){ if(!editing) return; const { id, ...body } = editing; await updateAdminUser(id, body); setEditing(null); await load(); }
   async function toggleActive(u:any){ await updateAdminUser(u.id, { status: u.status==='active' ? 'inactive':'active' }); await load(); }
   function getRolePill(role: string){
@@ -91,6 +101,7 @@ function UsersTab(){
           </select>
           <input className="border rounded px-2 py-1" placeholder="classId" value={form.classId||''} onChange={e=>setForm({ ...form, classId:e.target.value })} />
           <input className="border rounded px-2 py-1" placeholder="userId(学号/工号)" value={form.userId||''} onChange={e=>setForm({ ...form, userId:e.target.value })} />
+          <input className="border rounded px-2 py-1" placeholder="模板键(1..10，可选)" value={form.templateKey||''} onChange={e=>setForm({ ...form, templateKey:e.target.value })} />
           <button className="border rounded px-2 py-1" onClick={create}>创建</button>
         </div>
       </div>
@@ -196,14 +207,10 @@ function AssignmentsTab(){
   const [list, setList] = useState<any[]>([]);
   const [filter, setFilter] = useState<any>({});
   const [selected, setSelected] = useState<any|null>(null);
-  const [tpls, setTpls] = useState<string[]>([]);
-  const [assistants, setAssistants] = useState<any[]>([]);
-  const [chosenAssistant, setChosenAssistant] = useState<string>('');
-  useEffect(()=>{ load(); loadAssistants(); },[]);
+  const [tplKey, setTplKey] = useState<string>('');
+  useEffect(()=>{ load(); },[]);
   async function load(){ const res = await getAssignmentStudents(filter); setList(res.items); if(res.items?.length && !selected) setSelected(res.items[0]); }
-  async function loadAssistants(){ const res = await getAdminUsers({ role: 'assistant_tech' }); setAssistants(res.items||[]); if(!chosenAssistant && res.items?.length) setChosenAssistant(res.items[0].id); }
-  async function applyTemplates(){ if(!selected) return; for(const k of tpls){ await assignTemplate({ studentId: selected.studentId, templateKey: k }); } await load(); }
-  async function applyAssistant(){ if(!selected || !chosenAssistant) return; await assignAssistant({ studentId: selected.studentId, assistantId: chosenAssistant }); await load(); }
+  async function applyTemplate(){ if(!selected || !tplKey) return; await assignTemplate({ studentId: selected.studentId, templateKey: tplKey }); setTplKey(''); await load(); }
   return (
     <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
       {/* 左：学生列表 */}
@@ -226,29 +233,22 @@ function AssignmentsTab(){
         {!selected ? <div className="text-sm text-gray-500">请选择学生</div> : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="border rounded p-3">
-              <div className="font-semibold mb-2">设置模板（支持多选）</div>
+              <div className="font-semibold mb-2">设置模板（单选）</div>
               <div className="grid grid-cols-5 gap-2">
                 {Array.from({length:10}).map((_,i)=>{
                   const key = String(i+1);
-                  const checked = tpls.includes(key);
+                  const checked = tplKey===key;
                   return (
                     <label key={key} className={`px-2 py-1 border rounded text-center cursor-pointer ${checked?'bg-emerald-600 text-white border-emerald-600':'bg-white'}`}> 
-                      <input type="checkbox" className="hidden" checked={checked} onChange={()=> setTpls(checked? tpls.filter(k=>k!==key) : [...tpls,key]) } />
+                      <input type="radio" className="hidden" checked={checked} onChange={()=> setTplKey(key)} />
                       {key}
                     </label>
                   );
                 })}
               </div>
-              <button className="mt-3 bg-emerald-600 text-white rounded px-3 py-1" onClick={applyTemplates}>应用模板</button>
-              <div className="mt-2 text-xs text-gray-500">现有：{selected.instances.map((i:any)=> i.templateKey).join(', ')||'无'}</div>
-            </div>
-            <div className="border rounded p-3">
-              <div className="font-semibold mb-2">设置助教</div>
-              <select className="border rounded w-full px-2 py-1" onChange={e=>setChosenAssistant(e.target.value)} value={chosenAssistant}>
-                {assistants.map(a=> (<option key={a.id} value={a.id}>{a.name||a.email}</option>))}
-              </select>
-              <button className="mt-3 bg-emerald-600 text-white rounded px-3 py-1" onClick={applyAssistant}>设为助教</button>
-              <div className="mt-2 text-xs text-gray-500">当前助教：{selected.assistants.map((a:any)=> a.assistantName).join(', ')||'无'}</div>
+              <button className="mt-3 bg-emerald-600 text-white rounded px-3 py-1" onClick={applyTemplate}>应用模板并自动分配助教</button>
+              <div className="mt-2 text-xs text-gray-500">现有：{selected.instances.map((i:any)=> i.templateKey).join(', ')||'无'}；助教：{selected.assistants.map((a:any)=> a.assistantName).join(', ')||'无'}</div>
+              <div className="mt-1 text-xs text-emerald-700">提示：选择模板后，系统会根据模板负责关系自动绑定助教；同一学生仅保留一个模板实例。</div>
             </div>
           </div>
         )}

@@ -94,9 +94,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const loginDirect = useCallback(async (email: string) => {
-    const res = await httpPost<{ token: string; role: UserRole }>("/auth/direct-login", { email });
-    window.localStorage.setItem("token", res.token);
-    setState((s) => ({ ...s, token: res.token, loading: true }));
+    try {
+      const res = await httpPost<{ token: string; role: UserRole }>("/auth/direct-login", { email });
+      window.localStorage.setItem("token", res.token);
+      setState((s) => ({ ...s, token: res.token, loading: true }));
+      return;
+    } catch (e: any) {
+      // 兜底：部分环境会出现 JSON 解析 400 或代理异常，降级为 GET 版本
+      try {
+        const res = await httpGet<{ token: string; role: UserRole }>("/auth/direct-login", { query: { email } });
+        window.localStorage.setItem("token", res.token);
+        setState((s) => ({ ...s, token: res.token, loading: true }));
+        return;
+      } catch (e2) {
+        throw e; // 保留原始错误给调用方展示
+      }
+    }
   }, []);
 
   const logout = useCallback(() => {
