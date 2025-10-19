@@ -62,6 +62,38 @@ export default function ClassMonitorPage() {
     setChatPage(res.page || page);
   }
 
+  function exportCsv() {
+    if (!setProgress || setProgress.length === 0) {
+      alert('暂无可导出的数据');
+      return;
+    }
+    const headers = ['学生','序号','是否提交','时长(分钟)','轮次','反馈'];
+    const toCell = (v: any) => {
+      const s = (v ?? '').toString();
+      if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+      return s;
+    };
+    const rows = setProgress.map((row: any) => {
+      const name = `${row.name || row.studentId}${row.userId ? ` #${row.userId}` : ''}`;
+      const seq = row.sessionNumber ?? '';
+      const submitted = row.hasSubmission ? '是' : '否';
+      const minutes = row.sessionDurationMinutes ?? '';
+      const turns = row.studentMessageCount ?? 0;
+      const feedback = row.assistantFeedback ? String(row.assistantFeedback).replace(/\n/g, ' ') : '';
+      return [name, seq, submitted, minutes, turns, feedback].map(toCell).join(',');
+    });
+    const csvContent = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `class-monitor-${selectedSetId || 'export'}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div className="max-w-6xl mx-auto p-6 space-y-6 min-h-screen">
       <div className="flex items-center justify-between">
@@ -96,7 +128,7 @@ export default function ClassMonitorPage() {
               return (
                 <button key={it.setId} className={`text-left rounded-lg ring-1 bg-white shadow-sm p-3 hover:shadow-md transition ${ring}`} onClick={()=>{ setSelectedSetId(it.setId); refreshSetProgress(); }}>
                   <div className="flex items-center justify-between mb-1">
-                    <div className="text-xs text-muted-foreground">班级 { (pkgCompliance?.items||[]).find(x=>x.setId===it.setId)?.classId || '-' } · 第 {it.sequenceNumber} 次作业</div>
+                    <div className="text-xs text-muted-foreground">班级 { (()=>{ const m=(pkgCompliance?.items||[]).find((x:any)=>x.setId===it.setId); return (m as any)?.classId ?? '-'; })() } · 第 {it.sequenceNumber} 次作业</div>
                     <span className="text-xs underline text-primary">查看进度</span>
                   </div>
                   <div className="font-semibold truncate mb-2">{it.title || '未命名作业包'}</div>
@@ -135,6 +167,7 @@ export default function ClassMonitorPage() {
             ))}
           </select>
           <button onClick={refreshSetProgress} className="px-3 py-1 bg-primary text-primary-foreground rounded">查看</button>
+          <button onClick={exportCsv} className="px-3 py-1 border rounded">导出 CSV</button>
         </div>
         {selectedSetId ? (
           <div className="overflow-auto">
@@ -142,16 +175,18 @@ export default function ClassMonitorPage() {
               <thead>
                 <tr className="text-left border-b">
                   <th className="py-2 pr-4">学生</th>
-                  <th className="py-2 pr-4">会话序号</th>
+                  <th className="py-2 pr-4">序号</th>
                   <th className="py-2 pr-4">是否提交</th>
-                  <th className="py-2 pr-4">对话时长(分钟)</th>
-                  <th className="py-2 pr-4">助教反馈内容</th>
-                  <th className="py-2 pr-0 text-right">操作</th>
+                  <th className="py-2 pr-4">时长(分钟)</th>
+                  <th className="py-2 pr-4">轮次</th>
+                  <th className="py-2 pr-4">反馈</th>
                 </tr>
               </thead>
               <tbody>
-                {setProgress.map((row:any)=> (
-                  <tr key={row.studentId} className="border-b last:border-0">
+                {setProgress.map((row:any)=> {
+                  const danger = (row.sessionDurationMinutes ?? 0) < 20 || (row.studentMessageCount ?? 0) < 10;
+                  return (
+                  <tr key={row.studentId} className={`border-b last:border-0 ${danger ? 'bg-red-50' : ''}`}>
                     <td className="py-2 pr-4">{row.name || row.studentId} {row.userId ? `#${row.userId}` : ''}</td>
                     <td className="py-2 pr-4">{row.sessionNumber}</td>
                     <td className="py-2 pr-4">
@@ -164,6 +199,7 @@ export default function ClassMonitorPage() {
                       </span>
                     </td>
                     <td className="py-2 pr-4">{row.sessionDurationMinutes ?? '—'}</td>
+                    <td className="py-2 pr-4">{row.studentMessageCount ?? 0}</td>
                     <td className="py-2 pr-4 whitespace-pre-wrap max-w-[28rem]">
                       {row.assistantFeedback ? (
                         <div className="line-clamp-2 text-ellipsis">{row.assistantFeedback}</div>
@@ -178,7 +214,7 @@ export default function ClassMonitorPage() {
                       </button>
                     </td>
                   </tr>
-                ))}
+                )})}
               </tbody>
             </table>
           </div>
