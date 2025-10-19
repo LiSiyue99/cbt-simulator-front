@@ -93,7 +93,7 @@ setTemplateBrief(tpl?.brief || '');
 ## 行政助教（src/services/api/assistantClass.ts）
 - getClassStudents() → GET `/assistant-class/students`（返回扩展字段：`visitorTemplateKey/visitorTemplateName/lastSessionAt/totalSessions`）
 - getClassStudentSessions(studentId) → GET `/assistant-class/students/{id}/sessions`
-- getClassCompliance(week?) → GET `/assistant-class/compliance?week=YYYY-WW`（返回每条记录带 `missCountUptoWeek`）
+- getPackageCompliance() → GET `/assistant-class/compliance` → `{ items: [{ setId, sequenceNumber, title?, studentStartAt, studentDeadline, assistantStartAt, assistantDeadline, totalStudents, sessionsStarted, submissions, feedbacks }] }`
 - getProgressBySession(sessionNumber) → GET `/assistant-class/progress-by-session?sessionNumber=N`（返回每位学生的 `hasSession/hasThoughtRecord/missCountUptoSession`）
 - getClassHomeworkSets() → GET `/assistant-class/homework/sets`
 - getHomeworkSetProgress(setId) → GET `/assistant-class/homework/sets/{id}/progress`

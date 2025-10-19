@@ -30,14 +30,17 @@ export function getProgressBySession(sessionNumber: number) {
 
 // 新增：行政助教按 package 查看作业集与进度
 export function getClassHomeworkSets() {
-  return httpGet<{ items: { id: string; title?: string; description?: string; sequenceNumber: number; studentStartAt: string; studentDeadline: string; assistantStartAt: string; assistantDeadline: string; status: string }[] }>("/assistant-class/homework/sets");
+  return httpGet<{ items: any[] }>("/assistant-class/homework/sets");
 }
 
-export function getHomeworkSetProgress(setId: string) {
-  return httpGet<{ items: { studentId: string; name?: string; userId?: number; sessionNumber: number; hasSubmission: number; submittedAt?: string | null; hasAssistantReplyAfterSubmission: number; assistantRepliedAt?: string | null }[] }>(`/assistant-class/homework/sets/${setId}/progress`);
+export function getHomeworkSetProgress(id: string) {
+  return httpGet<{ items: any[] }>(`/assistant-class/homework/sets/${id}/progress`);
 }
 
-export async function getHomeworkSetFeedback(setId: string, studentId: string, page = 1, pageSize = 50) {
-  const params = new URLSearchParams({ studentId, page: String(page), pageSize: String(pageSize) });
-  return httpGet<{ items: { id: string; title?: string; description?: string; sequenceNumber: number; studentStartAt: string; studentDeadline: string; assistantStartAt: string; assistantDeadline: string; status: string }[] }>(`/assistant-class/homework/sets/${setId}/feedback?${params.toString()}`);
+export function getHomeworkSetFeedback(id: string, studentId: string, page = 1, pageSize = 50) {
+  return httpGet<{ items: any[]; page: number; pageSize: number; total: number }>(`/assistant-class/homework/sets/${id}/feedback`, { query: { studentId, page, pageSize } as any });
+}
+
+export function getPackageCompliance() {
+  return httpGet<{ items: Array<{ setId: string; sequenceNumber: number; title?: string; studentStartAt: string; studentDeadline: string; assistantStartAt: string; assistantDeadline: string; totalStudents: number; sessionsStarted: number; submissions: number; feedbacks: number }> }>("/assistant-class/compliance");
 }

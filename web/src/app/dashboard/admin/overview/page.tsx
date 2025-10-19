@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { getAdminOverview } from "@/services/api/assistant";
+import { getPackageCompliance } from "@/services/api/assistantClass";
+import Link from "next/link";
 
 export default function AdminOverviewPage() {
   const [data, setData] = useState<null | {
@@ -19,12 +21,15 @@ export default function AdminOverviewPage() {
     alerts: { type: string; message: string }[];
   }>(null);
   const [loading, setLoading] = useState(true);
+  const [pkgCompliance, setPkgCompliance] = useState<{ items: Array<{ setId: string; sequenceNumber: number; title?: string; studentStartAt: string; studentDeadline: string; assistantStartAt: string; assistantDeadline: string; totalStudents: number; sessionsStarted: number; submissions: number; feedbacks: number }> } | null>(null);
+  const [pkgFilter, setPkgFilter] = useState<'all'|'open'|'upcoming'|'closed'>('all');
 
   useEffect(() => {
     async function load() {
       try {
         const res = await getAdminOverview();
         setData(res as any);
+        try { const pc = await getPackageCompliance(); setPkgCompliance(pc as any); } catch {}
       } catch (e) {
         console.error(e);
       } finally {
@@ -119,6 +124,68 @@ export default function AdminOverviewPage() {
         </div>
       </div>
 
+      {/* 作业包合规概览 */}
+      <div className="bg-card rounded border border-border">
+        <div className="p-4 border-b border-border font-semibold flex items-center justify-between">
+          <span>作业包合规概览</span>
+          <div className="text-xs flex items-center gap-2">
+            <FilterChip active={pkgFilter==='all'} onClick={()=>setPkgFilter('all')}>全部</FilterChip>
+            <FilterChip active={pkgFilter==='open'} onClick={()=>setPkgFilter('open')}>进行中</FilterChip>
+            <FilterChip active={pkgFilter==='upcoming'} onClick={()=>setPkgFilter('upcoming')}>未开始</FilterChip>
+            <FilterChip active={pkgFilter==='closed'} onClick={()=>setPkgFilter('closed')}>已截止</FilterChip>
+          </div>
+        </div>
+        <div className="p-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {(pkgCompliance?.items || []).filter(it=>{
+            const now = Date.now();
+            const s = new Date(it.studentStartAt).getTime();
+            const d = new Date(it.studentDeadline).getTime();
+            const status = now < s ? 'upcoming' : (now > d ? 'closed' : 'open');
+            if (pkgFilter==='all') return true; return status===pkgFilter;
+          }).map((it) => {
+            const startedRate = it.totalStudents ? it.sessionsStarted / it.totalStudents : 0;
+            const submitRate = it.totalStudents ? it.submissions / it.totalStudents : 0;
+            const feedbackRate = it.totalStudents ? it.feedbacks / it.totalStudents : 0;
+            const cardRing = ringByRate(submitRate);
+            return (
+              <div key={it.setId} className={`rounded-xl ring-1 bg-white shadow-sm overflow-hidden ${cardRing}`}>
+                <div className="p-4 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, hsl(var(--primary) / 0.10) 0%, hsl(var(--primary) / 0.02) 100%)' }}>
+                  <div>
+                    <div className="text-xs text-muted-foreground">第 {it.sequenceNumber} 次作业</div>
+                    <div className="text-lg font-semibold truncate">{it.title || '未命名作业包'}</div>
+                  </div>
+                  <Link className="text-sm underline text-primary" href={`/dashboard/admin/class-monitor?set=${it.setId}`}>查看详情</Link>
+                </div>
+                <div className="p-4 space-y-3">
+                  <div className="text-xs text-muted-foreground">学生窗口：{formatTime(it.studentStartAt)} ~ {formatTime(it.studentDeadline)}</div>
+                  <div className="text-xs text-muted-foreground">助教窗口：{formatTime(it.assistantStartAt)} ~ {formatTime(it.assistantDeadline)}</div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <div className="text-xs text-muted-foreground mb-1">开始</div>
+                      <Bar percent={startedRate} colorClass={barColor(startedRate)} />
+                      <div className="text-xs text-muted-foreground mt-1">{it.sessionsStarted}/{it.totalStudents}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground mb-1">提交</div>
+                      <Bar percent={submitRate} colorClass={barColor(submitRate)} />
+                      <div className="text-xs text-muted-foreground mt-1">{it.submissions}/{it.totalStudents}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground mb-1">反馈</div>
+                      <Bar percent={feedbackRate} colorClass={barColor(feedbackRate)} />
+                      <div className="text-xs text-muted-foreground mt-1">{it.feedbacks}/{it.totalStudents}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          {!(pkgCompliance?.items || []).length && (
+            <div className="text-sm text-muted-foreground">暂无作业包</div>
+          )}
+        </div>
+      </div>
+
       {/* Alerts */}
       {data.alerts && data.alerts.length>0 && (
         <div className="bg-yellow-50 border border-yellow-200 rounded">
@@ -194,4 +261,26 @@ function badgeColors(idx: number) {
     { bg: 'bg-rose-50', text: 'text-rose-700', border: 'border-rose-200' },
   ];
   return palette[idx % palette.length];
+}
+
+function formatTime(s: string) {
+  try { return new Date(s).toLocaleString('zh-CN'); } catch { return s; }
+}
+
+function barColor(rate: number) {
+  if (rate >= 0.8) return 'bg-emerald-600';
+  if (rate >= 0.5) return 'bg-amber-500';
+  return 'bg-rose-600';
+}
+
+function ringByRate(rate: number) {
+  if (rate >= 0.8) return 'ring-emerald-300';
+  if (rate >= 0.5) return 'ring-amber-300';
+  return 'ring-rose-300';
+}
+
+function FilterChip({ active, children, onClick }: { active: boolean; children: any; onClick: ()=>void }) {
+  return (
+    <button onClick={onClick} className={`px-2 py-0.5 rounded-full border text-xs ${active? 'bg-primary text-primary-foreground border-primary':'border-border text-muted-foreground hover:bg-muted'}`}>{children}</button>
+  );
 }

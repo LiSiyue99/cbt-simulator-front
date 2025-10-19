@@ -34,16 +34,35 @@ export default function AdminHomeworkPage() {
   async function create() {
     const targets = (form.classIds || []).map((c)=>c.trim()).filter(Boolean);
     for (const cid of targets) {
-      await httpPost("/admin/homework/sets", {
-        classId: Number(cid),
-        sequenceNumber: Number(form.sequenceNumber),
-        formFields: form.fields,
-        studentStartAt: new Date(form.studentStartAt),
-        studentDeadline: new Date(form.studentDeadline),
-        assistantStartAt: new Date(form.assistantStartAt),
-        assistantDeadline: new Date(form.assistantDeadline),
-        status: "published",
-      });
+      try {
+        await httpPost("/admin/homework/sets", {
+          classId: Number(cid),
+          sequenceNumber: Number(form.sequenceNumber),
+          formFields: form.fields,
+          studentStartAt: new Date(form.studentStartAt),
+          studentDeadline: new Date(form.studentDeadline),
+          assistantStartAt: new Date(form.assistantStartAt),
+          assistantDeadline: new Date(form.assistantDeadline),
+          status: "published",
+        });
+      } catch (e: any) {
+        const code = e?.code || e?.statusCode || '';
+        const msg = (e?.message || '').toString();
+        // 后端：invalid_sequence
+        if (code === '400' || e?.status === 400) {
+          if ((e?.data?.error || e?.message) === 'invalid_sequence' || msg.includes('invalid_sequence')) {
+            // message: class {classId} expected next sequenceNumber = {expected}
+            const m = /class (\d+) expected next sequenceNumber = (\d+)/.exec(e?.data?.message || msg || '');
+            const classId = m?.[1];
+            const expected = m?.[2];
+            alert(`班级 ${classId || cid} 的下一次作业编号应为 ${expected || '(未知)'}。\n请将“第N次作业”填写为 ${expected || '正确的下一个序号'} 后再发布。`);
+            return; // 中断后续班级循环
+          }
+        }
+        // 其他错误走通用提示
+        alert(e?.message || '发布失败');
+        return;
+      }
     }
     await load();
   }
@@ -94,6 +113,7 @@ export default function AdminHomeworkPage() {
             <label className="text-sm space-y-1">
               <span className="text-muted-foreground">第N次作业（= 第N次会话）</span>
               <input className="border rounded px-3 py-2 w-full md:max-w-[240px] focus:outline-none focus:ring-2 focus:ring-primary/40" value={form.sequenceNumber} onChange={e=>setForm({...form,sequenceNumber:e.target.value})} placeholder="例如：1" />
+              <span className="text-xs text-muted-foreground">提示：每个班级需从 1 开始依次递增（1,2,3…）。如提示“下一次应为 N+1”，请按提示修改。</span>
             </label>
           </div>
         </div>
