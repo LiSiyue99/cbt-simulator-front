@@ -279,7 +279,7 @@ export default function ConversationPage() {
       setLoadingActivity(false);
       setShowActivityModal(false);
       const code = e?.code || '';
-      if (code === 'package_missing') setMsg('请等待管理员安排对话任务');
+      if (code === 'package_missing') setMsg('请等待管理员安排对话任务（缺少对应作业包）');
       else if (code === 'package_window_closed') setMsg('当前作业包窗口未开放');
       else setMsg(e?.message || '开始会话失败');
     } finally {
@@ -301,12 +301,9 @@ export default function ConversationPage() {
       setWeeklyActivity(null);
     } catch (e: any) {
       const code = e?.code || '';
-      if (code === 'student_not_open_yet') setMsg('本周对话尚未开放（周二 00:00 开放）');
-      else if (code === 'student_locked_for_week') setMsg('本周对话窗口已结束（周五 24:00 截止）');
-      else if (code === 'weekly_quota_exhausted') setMsg('本周已创建过一次对话，请下周继续');
-      else if (code === 'session_unfinished') setMsg('你有未完成的对话，请先在“历史对话”中完成它');
-      else if (code === 'package_missing') setMsg('请等待管理员安排对话任务');
+      if (code === 'package_missing') setMsg('请等待管理员安排对话任务（缺少对应作业包）');
       else if (code === 'package_window_closed') setMsg('当前作业包窗口未开放');
+      else if (code === 'session_unfinished') setMsg('你有未完成的对话，请先在“历史对话”中完成它');
       else setMsg(e?.message || '创建对话失败');
     } finally {
       setConfirmStarting(false);

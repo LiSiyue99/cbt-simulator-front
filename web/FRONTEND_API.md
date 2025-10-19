@@ -26,13 +26,10 @@
 - getSessionDetail(sessionId) → GET `/sessions/{id}` → 详情
 - prepareNewSession(sessionId) → POST `/sessions/{id}/prepare`（回退用途）
 - ensureSessionOutputs(sessionId) → POST `/sessions/{id}/ensure-outputs`（开始新对话前轮询校验）
-  - 学生专属规则（助教/admin/playground 不受限）：
-    - 开放窗口：周二 00:00 ~ 周五 24:00（北京时间）。周二之前 → `403 student_not_open_yet`；周五之后 → `403 student_locked_for_week`。
-    - 周度配额：一周仅一次新会话 → `403 weekly_quota_exhausted`。
-    - 冷却：创建后 1 小时内禁止再次创建 → `403 cooldown_recent_created`。
-    - 未完成阻断：存在未完成会话 → `409 session_unfinished`（返回 `sessionId/sessionNumber`）。
-    - 周级豁免 `extend_student_tr` 放宽“封窗时间”，不绕过配额/冷却/未完成。
-  - 可配置时间窗：`student_open_weekday`（默认 2）、`student_deadline_weekday`（默认 5）、`assistant_deadline_weekday`（默认 7）。
+  - 学生端改为“基于作业包窗口”的绝对时间规则：
+    - 必须存在“第 N 次作业包（homework_sets）”，并且当前时间在 `studentStartAt ~ studentDeadline` 之间，才能开始第 N 次会话。
+    - 错误码：`package_missing` | `package_window_closed` | `cooldown_recent_created` | `session_unfinished`。
+    - 仍保留 1 小时冷却与“未完成阻断”。
   - 新增：getVisitorTemplate(visitorInstanceId) → GET `/visitor/template` → `{ name, templateKey, brief }`（用于在会话页显示模板简介）。
 
 示例
