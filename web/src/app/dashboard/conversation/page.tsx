@@ -679,6 +679,14 @@ export default function ConversationPage() {
               </button>
             )}
 
+            {canInteract && (
+              <ResetButton sessionId={sessionId!} onDone={async()=>{
+                // 重置成功后，清空本地聊天并重新拉取last
+                setChat([]);
+                try { if (visitorInstanceId) { const last = await getLastSession(visitorInstanceId); if (last && !last.finalizedAt) { setSessionId(last.sessionId); setSessionNumber(last.sessionNumber); setChat(last.chatHistory||[]); } } } catch {}
+              }} />
+            )}
+
             {selectedHistorySession && !isStudent && (
               <>
                 <button
@@ -694,6 +702,45 @@ export default function ConversationPage() {
                 >
                   {trSubmitted ? '查看作业' : '填写作业'}
                 </button>
+              </>
+            )}
+
+            {selectedHistorySession && isStudent && (
+              <>
+                <button
+                  onClick={handleShowOutputs}
+                  className="px-3 py-2 text-sm border border-border rounded-lg hover:bg-accent transition-colors"
+                >
+                  查看产出
+                </button>
+                <ResetButton sessionId={selectedHistorySession} onDone={async()=>{
+                  try {
+                    const detail = await getSessionDetail(selectedHistorySession);
+                    // 将该历史会话切换为“进行中”当前会话
+                    setSelectedHistorySession(null);
+                    setSessionId(selectedHistorySession);
+                    setSessionNumber(detail.sessionNumber);
+                    setChat([]);
+                    // 刷新侧边历史状态（已完成→未完成）
+                    if (visitorInstanceId) {
+                      try {
+                        const sessionsList = await listSessions(visitorInstanceId);
+                        const sessionsData = sessionsList.items.map(item => ({
+                          sessionId: item.sessionId,
+                          sessionNumber: item.sessionNumber,
+                          date: item.createdAt,
+                          completed: !!item.completed,
+                          messageCount: item.messageCount ?? 0,
+                          lastMessage: item.lastMessage
+                        }));
+                        setSessions(sessionsData);
+                      } catch {}
+                    }
+                    setMsg('已重置该轮对话，可继续开始此轮对话');
+                  } catch (e:any) {
+                    setMsg(e?.message || '刷新失败');
+                  }
+                }} />
               </>
             )}
 
@@ -1136,6 +1183,49 @@ export default function ConversationPage() {
         </div>
       )}
     </div>
+  );
+}
+
+function ResetButton({ sessionId, onDone }: { sessionId: string; onDone: ()=>void }){
+  const [open, setOpen] = useState(false);
+  const [forcingHard, setForcingHard] = useState(false);
+  const [busy, setBusy] = useState(false);
+  return (
+    <>
+      <button onClick={()=>setOpen(true)} className="px-3 py-2 text-sm border border-red-300 text-red-700 rounded-lg hover:bg-red-50">重置对话</button>
+      {open && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-card rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold text-foreground mb-3">重置本轮对话</h3>
+            <p className="text-sm text-muted-foreground mb-3">重置后将清空当前轮的聊天记录；若你已布置作业或系统已生成产物，将执行“硬重置”，会清空聊天/作业/日记/活动并回滚长期记忆，且不可撤销。</p>
+            <label className="flex items-center gap-2 text-sm mb-3">
+              <input type="checkbox" checked={forcingHard} onChange={(e)=>setForcingHard(e.target.checked)} />
+              强制执行硬重置
+            </label>
+            <div className="flex justify-end gap-2">
+              <button onClick={()=>setOpen(false)} className="px-3 py-2 border rounded">取消</button>
+              <button
+                onClick={async ()=>{
+                  setBusy(true);
+                  try {
+                    const { resetSession } = await import('@/services/api/sessions');
+                    await resetSession(sessionId, forcingHard ? 'hard' : 'auto');
+                    setOpen(false);
+                    onDone();
+                  } catch (e:any) {
+                    alert(e?.message || '重置失败');
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+                disabled={busy}
+                className="px-4 py-2 bg-red-600 text-white rounded disabled:opacity-60"
+              >{busy?'处理中...':'确认重置'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 

@@ -75,3 +75,11 @@ export function ensureSessionOutputs(sessionId: string) {
 export function getVisitorTemplate(visitorInstanceId: string){
   return httpGet<{ name: string; templateKey: string; brief: string }>(`/visitor/template`, { query: { visitorInstanceId } });
 }
+
+/**
+ * resetSession - 重置会话
+ * mode: 'auto' | 'soft' | 'hard'
+ */
+export function resetSession(sessionId: string, mode: 'auto'|'soft'|'hard' = 'auto') {
+  return httpPost<{ ok: boolean; mode: 'soft'|'hard' }>(`/sessions/${sessionId}/reset`, { mode });
+}

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/auth";
 import { getAssignmentsList } from "@/services/api/assignments";
 import { getHomeworkSetBySession } from "@/services/api/homeworkSets";
-import { createHomeworkSubmission, getHomeworkSubmission, type HomeworkFormData } from "@/services/api/homeworkSubmissions";
+import { createHomeworkSubmission, getHomeworkSubmission, updateHomeworkSubmission, type HomeworkFormData } from "@/services/api/homeworkSubmissions";
 import { listAssistantChat, sendAssistantChat, markAssistantChatRead } from "@/services/api/assistant";
 import {
   ClipboardCheck,
@@ -171,6 +171,33 @@ export default function AssignmentsPage() {
     } catch (e:any) {
       const code = e?.code;
       if (code === 'submission_exists') setMsg('你已提交过该次作业'); else setMsg(e?.message || '提交失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updateHomework = async () => {
+    if (!selectedSessionId) return;
+    setLoading(true);
+    setMsg(null);
+    try {
+      // 字段校验
+      for (const f of formFields) {
+        const v: any = (formData as any)[f.key];
+        if (v === undefined || v === null || (typeof v === 'string' && v.trim() === '')) {
+          setMsg(`请填写：${f.label}`);
+          setLoading(false);
+          return;
+        }
+      }
+      await updateHomeworkSubmission(selectedSessionId, formData);
+      setMsg('已更新，助教已收到提醒');
+    } catch (e:any) {
+      const code = e?.code;
+      if (code === 'package_missing') setMsg('缺少作业包，无法更新');
+      else if (code === 'package_window_closed') setMsg('已过学生窗口，无法更新');
+      else if (code === 'submission_not_found') setMsg('尚未提交作业，无法更新');
+      else setMsg(e?.message || '更新失败');
     } finally {
       setLoading(false);
     }
@@ -343,7 +370,7 @@ export default function AssignmentsPage() {
                                 placeholder={f.placeholder || ''}
                                 className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
                                 rows={6}
-                                disabled={selectedSession?.thoughtRecordCount > 0}
+                                
                               />
                             ) : f.type === 'number' ? (
                               <input type="number"
@@ -351,7 +378,7 @@ export default function AssignmentsPage() {
                                 onChange={(e)=> setFormData(prev => ({ ...prev, [f.key]: Number(e.target.value) }))}
                                 placeholder={f.placeholder || ''}
                                 className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                                disabled={selectedSession?.thoughtRecordCount > 0}
+                                
                               />
                             ) : f.type === 'date' ? (
                               <input type="date"
@@ -359,14 +386,14 @@ export default function AssignmentsPage() {
                                 onChange={(e)=> setFormData(prev => ({ ...prev, [f.key]: e.target.value }))}
                                 placeholder={f.placeholder || ''}
                                 className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                                disabled={selectedSession?.thoughtRecordCount > 0}
+                                
                               />
                             ) : f.type === 'boolean' ? (
                               <select
                                 value={String((formData as any)[f.key] ?? '')}
                                 onChange={(e)=> setFormData(prev => ({ ...prev, [f.key]: e.target.value === 'true' }))}
                                 className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-                                disabled={selectedSession?.thoughtRecordCount > 0}
+                                
                               >
                                 <option value="">请选择</option>
                                 <option value="true">是</option>
@@ -378,7 +405,7 @@ export default function AssignmentsPage() {
                                 onChange={(e)=> setFormData(prev => ({ ...prev, [f.key]: e.target.value }))}
                                 placeholder={f.placeholder || ''}
                                 className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                                disabled={selectedSession?.thoughtRecordCount > 0}
+                                
                               />
                             )}
                             {f.helpText && <p className="text-xs text-muted-foreground">{f.helpText}</p>}
@@ -386,13 +413,23 @@ export default function AssignmentsPage() {
                         ))}
                       </div>
                     )}
-                    <button
-                      onClick={submitHomework}
-                      disabled={loading || formFields.length === 0 || (selectedSession?.thoughtRecordCount ?? 0) > 0}
-                      className="w-full bg-primary text-primary-foreground rounded-lg py-3 px-4 hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
-                    >
-                      {loading ? '提交中...' : '提交作业'}
-                    </button>
+                    {selectedSession?.thoughtRecordCount > 0 ? (
+                      <button
+                        onClick={updateHomework}
+                        disabled={loading || formFields.length === 0}
+                        className="w-full bg-amber-600 text-white rounded-lg py-3 px-4 hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+                      >
+                        {loading ? '保存中...' : '保存修改'}
+                      </button>
+                    ) : (
+                      <button
+                        onClick={submitHomework}
+                        disabled={loading || formFields.length === 0}
+                        className="w-full bg-primary text-primary-foreground rounded-lg py-3 px-4 hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+                      >
+                        {loading ? '提交中...' : '提交作业'}
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>

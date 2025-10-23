@@ -26,6 +26,7 @@
 - getSessionDetail(sessionId) → GET `/sessions/{id}` → 详情
 - prepareNewSession(sessionId) → POST `/sessions/{id}/prepare`（回退用途）
 - ensureSessionOutputs(sessionId) → POST `/sessions/{id}/ensure-outputs`（开始新对话前轮询校验）
+ - resetSession(sessionId, mode='auto'|'soft'|'hard') → POST `/sessions/{id}/reset` → `{ ok, mode }`
   - 学生端改为“基于作业包窗口”的绝对时间规则：
     - 必须存在“第 N 次作业包（homework_sets）”，并且当前时间在 `studentStartAt ~ studentDeadline` 之间，才能开始第 N 次会话。
     - 错误码：`package_missing` | `package_window_closed` | `cooldown_recent_created` | `session_unfinished`。
@@ -67,6 +68,7 @@ setTemplateBrief(tpl?.brief || '');
 - createHomeworkSubmission({ sessionId, homeworkSetId, formData }) → POST `/homework/submissions` → `{ ok, id }`（仅一次提交）
 - 重复提交将返回 409：`{ error: 'conflict', code: 'submission_exists' }`
 - getHomeworkSubmission(sessionId) → GET `/homework/submissions` → `{ item }`
+ - updateHomeworkSubmission(sessionId, formData) → PUT `/homework/submissions` → `{ ok, id, updated: true }`
 - getDashboardTodos(visitorInstanceId) → GET `/dashboard/todos` → `{ items, summary }`
   - 说明：Dashboard 的“本周对话/第 N 次作业”待办仅在存在对应的作业包时出现，并且 `dueDate = homework_sets.studentDeadline`。
 
