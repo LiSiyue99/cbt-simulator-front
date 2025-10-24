@@ -83,3 +83,15 @@ export function getVisitorTemplate(visitorInstanceId: string){
 export function resetSession(sessionId: string, mode: 'auto'|'soft'|'hard' = 'auto') {
   return httpPost<{ ok: boolean; mode: 'soft'|'hard' }>(`/sessions/${sessionId}/reset`, { mode });
 }
+
+/**
+ * getStudentOutputs - 学生查看自身实例的历史产出（日记/活动/作业/LTM）
+ */
+export function getStudentOutputs(visitorInstanceId: string) {
+  return httpGet<{
+    diary: { sessionNumber: number; sessionId: string; createdAt: string; sessionDiary: string }[];
+    activity: { sessionNumber: number; sessionId: string; createdAt: string; preSessionActivity: unknown }[];
+    homework: { sessionNumber: number; sessionId: string; createdAt: string; homework: Record<string, unknown> }[];
+    ltm: { current: Record<string, unknown>; history: { createdAt: string; content: Record<string, unknown> }[] };
+  }>(`/student/outputs`, { query: { visitorInstanceId } });
+}

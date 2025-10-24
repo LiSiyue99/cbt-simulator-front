@@ -57,6 +57,7 @@ export default function ConversationPage() {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showActivityDetail, setShowActivityDetail] = useState(false);
   const [weeklyActivity, setWeeklyActivity] = useState<any>(null);
+  const [showOutputsForStart, setShowOutputsForStart] = useState<boolean>(false);
   const [startingNewSession, setStartingNewSession] = useState(false);
   const [confirmStarting, setConfirmStarting] = useState(false);
   const [selectedHistorySession, setSelectedHistorySession] = useState<string | null>(null);
@@ -259,10 +260,10 @@ export default function ConversationPage() {
         if (!ok) throw new Error('上次会话的产物仍在生成中，请稍后再试');
 
         const detail = await getSessionDetail(lastCompleted.sessionId);
-        if (detail.preSessionActivity) {
-          setWeeklyActivity(detail.preSessionActivity);
-          setShowActivityDetail(true);
-        }
+        // 展示完整产出（AI日记/活动/长期记忆）
+        setHistoryDetail(detail);
+        setShowOutputsForStart(true);
+        setShowOutputs(true);
       } else {
         // 没有历史已完成会话，直接创建新会话
         const res = await startSession({ visitorInstanceId, auto: true });
@@ -298,6 +299,8 @@ export default function ConversationPage() {
       setSessionNumber(res.sessionNumber);
       setChat([]);
       setShowActivityDetail(false);
+      setShowOutputs(false);
+      setShowOutputsForStart(false);
       setWeeklyActivity(null);
     } catch (e: any) {
       const code = e?.code || '';
@@ -856,7 +859,13 @@ export default function ConversationPage() {
                 <div ref={messagesEndRef} />
               </div>
               {showOutputs && historyDetail && (
-                <OutputsModal onClose={()=>setShowOutputs(false)} detail={historyDetail} visitorInstanceId={visitorInstanceId!} />
+                <OutputsModal
+                  onClose={()=>{ setShowOutputs(false); setShowOutputsForStart(false); }}
+                  detail={historyDetail}
+                  visitorInstanceId={visitorInstanceId!}
+                  onConfirm={showOutputsForStart ? async ()=>{ await confirmStartSession(); } : undefined}
+                  confirmText={showOutputsForStart ? '开始对话' : undefined}
+                />
               )}
             </div>
           )}
@@ -1229,16 +1238,16 @@ function ResetButton({ sessionId, onDone }: { sessionId: string; onDone: ()=>voi
   );
 }
 
-function OutputsModal({ onClose, detail, visitorInstanceId }: { onClose: ()=>void; detail: any; visitorInstanceId: string }) {
+function OutputsModal({ onClose, detail, visitorInstanceId, onConfirm, confirmText }: { onClose: ()=>void; detail: any; visitorInstanceId: string; onConfirm?: ()=>Promise<void>|void; confirmText?: string }) {
   const [tab, setTab] = useState<'diary'|'activity'|'ltm'>('diary');
   const [ltm, setLtm] = useState<{ currentLtm?: any; ltmHistory: any[] }>({ ltmHistory: [] });
   const [pollingMsg, setPollingMsg] = useState<string>('');
   useEffect(() => {
     let mounted = true;
-    import('@/services/api/playground').then(async ({ getPlaygroundLtm }) => {
+    import('@/services/api/sessions').then(async ({ getStudentOutputs }) => {
       try {
-        const res = await getPlaygroundLtm(visitorInstanceId);
-        if (mounted) setLtm({ currentLtm: res.currentLtm, ltmHistory: res.ltmHistory || [] });
+        const res = await getStudentOutputs(visitorInstanceId);
+        if (mounted) setLtm({ currentLtm: (res as any)?.ltm?.current, ltmHistory: (res as any)?.ltm?.history || [] });
       } catch {}
     });
     return () => { mounted = false; };
@@ -1251,16 +1260,17 @@ function OutputsModal({ onClose, detail, visitorInstanceId }: { onClose: ()=>voi
         const res = await getSessionDetail(detail.sessionId);
         const readyDiary = Boolean(res.sessionDiary);
         const readyAct = Boolean(res.preSessionActivity);
-        // LTM 通过 playground LTM current 判断
-        const { getPlaygroundLtm } = await import('@/services/api/playground');
-        const lt = await getPlaygroundLtm(visitorInstanceId);
-        const readyLtm = Boolean(lt.currentLtm && Object.keys(lt.currentLtm).length > 0);
+        // LTM 通过学生 outputs 的 current 判断
+        const { getStudentOutputs } = await import('@/services/api/sessions');
+        const out = await getStudentOutputs(visitorInstanceId);
+        const curr = (out as any)?.ltm?.current || {};
+        const readyLtm = Boolean(curr && Object.keys(curr).length > 0);
         if (!readyDiary || !readyAct || !readyLtm) {
           setPollingMsg('请刷新页面后查看最新情况');
         } else {
           setPollingMsg('');
           // 更新最新产出
-          setLtm({ currentLtm: lt.currentLtm, ltmHistory: lt.ltmHistory || [] });
+          setLtm({ currentLtm: curr, ltmHistory: (out as any)?.ltm?.history || [] });
         }
       } catch {}
     }, 30000);
@@ -1346,6 +1356,12 @@ function OutputsModal({ onClose, detail, visitorInstanceId }: { onClose: ()=>voi
           )}
           {pollingMsg && <div className="text-xs text-muted-foreground mt-2">{pollingMsg}</div>}
         </div>
+        {onConfirm && (
+          <div className="mt-4 flex justify-end gap-2">
+            <button onClick={onClose} className="px-4 py-2 border rounded">取消</button>
+            <button onClick={async()=>{ try { await onConfirm(); } finally {} }} className="px-4 py-2 bg-primary text-primary-foreground rounded">{confirmText || '确认'}</button>
+          </div>
+        )}
       </div>
     </div>
   );

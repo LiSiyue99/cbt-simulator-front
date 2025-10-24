@@ -5,6 +5,137 @@ import { httpGet, httpPost, httpPut, httpDelete } from "@/services/http";
 
 type Field = { key: string; label: string; type: string; placeholder?: string; helpText?: string };
 
+// 轻量组件：为指定学生解锁（邮箱列表 + until）
+function UnlockEmailsPanel({ setId, classId, onDone }: { setId: string; classId: number; onDone?: () => void }) {
+  const [emails, setEmails] = useState<string[]>([""]);
+  const [until, setUntil] = useState<string>(new Date(Date.now() + 2 * 24 * 3600 * 1000).toISOString().slice(0, 16));
+  const [submitting, setSubmitting] = useState(false);
+  const [candidates, setCandidates] = useState<Array<{name?: string; email?: string}>>([]);
+  const [openIdx, setOpenIdx] = useState<number | null>(null);
+
+  useEffect(() => {
+    // 管理员：按班级拉取学生列表
+    (async () => {
+      try {
+        const res: any = await httpGet(`/admin/assignments/students?classId=${classId}` as any);
+        const items = (res?.items || []).map((it: any) => ({ name: it.name, email: it.email }));
+        setCandidates(items);
+      } catch {
+        setCandidates([]);
+      }
+    })();
+  }, [classId]);
+
+  function updateEmail(idx: number, v: string) {
+    const a = [...emails];
+    a[idx] = v;
+    setEmails(a);
+  }
+  function addRow() {
+    setEmails((a) => [...a, ""]);
+  }
+  function removeRow(idx: number) {
+    setEmails((a) => {
+      const b = [...a];
+      b.splice(idx, 1);
+      return b.length ? b : [""];
+    });
+  }
+
+  async function submit() {
+    const list = emails.map((e) => e.trim()).filter((e) => !!e);
+    if (!list.length) {
+      alert("请先输入至少一个学生邮箱");
+      return;
+    }
+    if (!until) {
+      alert("请填写解锁截止时间");
+      return;
+    }
+    try {
+      setSubmitting(true);
+      const res: any = await httpPost(`/admin/homework/sets/${setId}/ddl-override/students/emails`, {
+        emails: list,
+        action: "extend_student_tr",
+        until: new Date(until),
+      });
+      alert(`已解锁 ${Number(res?.affected || 0)} 人；未匹配邮箱 ${Number((res?.missingEmails || []).length)}`);
+      onDone?.();
+    } catch (e: any) {
+      alert(e?.message || "解锁失败");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="w-full border rounded bg-white/70 p-3 space-y-2">
+      <div className="text-sm text-muted-foreground">按邮箱选择学生（逐项输入，点击“增加一行”添加更多）</div>
+      <div className="space-y-2">
+        {emails.map((em, idx) => {
+          const q = (em || '').trim().toLowerCase();
+          const list = !q ? [] : (candidates || []).filter(c =>
+            (c.email || '').toLowerCase().startsWith(q) || (c.name || '').toLowerCase().startsWith(q)
+          ).slice(0, 6);
+          return (
+            <div key={idx} className="relative flex gap-2 items-start">
+              <div className="flex-1">
+                <input
+                  className="border rounded px-2 py-1 w-72 focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  value={em}
+                  onFocus={()=> setOpenIdx(idx)}
+                  onBlur={()=> setTimeout(()=> setOpenIdx(v=> (v===idx? null : v)), 150)}
+                  onChange={(e) => updateEmail(idx, e.target.value)}
+                  placeholder="姓名或邮箱，如 张三 或 zhangsan@..."
+                />
+                {openIdx===idx && list.length>0 && (
+                  <div className="absolute z-50 mt-1 w-72 max-h-48 overflow-auto rounded border bg-white shadow">
+                    {list.map((c, i) => (
+                      <button key={i} className="w-full text-left px-2 py-1 text-sm hover:bg-muted" onMouseDown={(e)=>{ e.preventDefault(); updateEmail(idx, c.email || c.name || ''); }}>
+                        {(c.name || '')} {c.email ? ` <${c.email}>` : ''}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <button className="px-2 py-1 text-sm border rounded" onClick={() => removeRow(idx)}>删除</button>
+            </div>
+          );
+        })}
+        <button className="text-sm underline text-primary" onClick={addRow}>+ 增加一行</button>
+      </div>
+      <div className="text-sm space-y-1">
+        <span className="text-muted-foreground">解锁截止时间（until）</span>
+        <div>
+          <input className="border rounded px-2 py-1 w-72 focus:outline-none focus:ring-2 focus:ring-primary/40" type="datetime-local" value={until} onChange={(e) => setUntil(e.target.value)} />
+        </div>
+      </div>
+      <div className="pt-1">
+        <button className="px-3 py-1.5 bg-primary text-primary-foreground rounded disabled:opacity-60" disabled={submitting} onClick={submit}>{submitting ? "提交中..." : "提交解锁"}</button>
+      </div>
+    </div>
+  );
+}
+
+function UnlockEmailsDialog({ setId, classId, onClose, onDone }: { setId: string; classId: number; onClose: () => void; onDone?: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative z-10 w-full max-w-lg">
+        <div className="rounded-xl shadow-xl ring-1 ring-black/5 bg-white">
+          <div className="flex items-center justify-between px-4 py-3 border-b">
+            <div className="font-semibold">为指定学生解锁</div>
+            <button className="text-sm px-2 py-1 border rounded" onClick={onClose}>关闭</button>
+          </div>
+          <div className="p-4">
+            <UnlockEmailsPanel setId={setId} classId={classId} onDone={onDone} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AdminHomeworkPage() {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -20,6 +151,9 @@ export default function AdminHomeworkPage() {
       { key: "field2", label: "字段2", type: "textarea" },
     ],
   });
+  const [unlockForSetId, setUnlockForSetId] = useState<string | null>(null);
+  const [unlockForClassId, setUnlockForClassId] = useState<number | null>(null);
+  const [recentForSet, setRecentForSet] = useState<{ id: string; items: any[] } | null>(null);
 
   async function load() {
     setLoading(true);
@@ -226,10 +360,62 @@ export default function AdminHomeworkPage() {
                       await httpPut(`/admin/homework/sets/${it.id}`, { assistantDeadline: new Date(na) });
                       await load();
                     }}>修改助教截止时间</button>
+                    <button className="px-2 py-1 border rounded" title="为指定学生解锁（逐项输入邮箱）" onClick={()=>{
+                      setUnlockForSetId(it.id);
+                      setUnlockForClassId(Number(it.classId));
+                    }}>为学生解锁</button>
+                    <button className="px-2 py-1 border rounded" title="查看最近解锁记录" onClick={async()=>{
+                      try {
+                        const r: any = await httpGet(`/admin/homework/sets/${it.id}/ddl-override/recent` as any);
+                        setRecentForSet({ id: it.id, items: r?.items || [] });
+                      } catch (e:any) {
+                        alert(e?.message || '读取失败');
+                      }
+                    }}>查看最近解锁记录</button>
                   </div>
                 </div>
               </div>
             ))}
+          {unlockForSetId && unlockForClassId!=null && (
+            <UnlockEmailsDialog
+              setId={unlockForSetId}
+              classId={unlockForClassId}
+              onClose={() => setUnlockForSetId(null)}
+              onDone={() => { setUnlockForSetId(null); setUnlockForClassId(null); load(); }}
+            />
+          )}
+          {recentForSet && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center">
+              <div className="absolute inset-0 bg-black/40" onClick={()=> setRecentForSet(null)} />
+              <div className="relative z-10 w-full max-w-2xl">
+                <div className="rounded-xl shadow-xl ring-1 ring-black/5 bg-white">
+                  <div className="flex items-center justify-between px-4 py-3 border-b">
+                    <div className="font-semibold">最近解锁记录</div>
+                    <button className="text-sm px-2 py-1 border rounded" onClick={()=> setRecentForSet(null)}>关闭</button>
+                  </div>
+                  <div className="p-4 max-h-[70vh] overflow-auto text-sm">
+                    {(recentForSet.items||[]).length === 0 ? (
+                      <div className="text-muted-foreground">暂无记录</div>
+                    ) : (
+                      <div className="space-y-2">
+                        {(recentForSet.items||[]).map((row:any, idx:number)=> (
+                          <div key={idx} className="border rounded p-2 bg-white/70">
+                            <div className="flex flex-wrap gap-x-4 gap-y-1">
+                              <div><span className="text-muted-foreground">对象</span>：{row.subjectEmail || row.subjectName || row.subjectType}</div>
+                              <div><span className="text-muted-foreground">动作</span>：{row.action}</div>
+                              <div><span className="text-muted-foreground">有效期</span>：{new Date(row.until).toLocaleString('zh-CN')}</div>
+                              <div><span className="text-muted-foreground">创建时间</span>：{new Date(row.createdAt).toLocaleString('zh-CN')}</div>
+                              <div className="truncate max-w-full"><span className="text-muted-foreground">作用域</span>：{row.scope}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
           </div>
         )}
       </div>

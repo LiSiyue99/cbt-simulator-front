@@ -134,7 +134,8 @@ export function Sidebar() {
         classAssistantItem,
         // Playground 暂不发布：隐藏导航项
         { name: "宏观情况概览", href: "/dashboard/admin/overview", icon: BarChart3, description: "全局态势与配置入口" },
-        { name: "规则与日历", href: "/dashboard/admin/policy", icon: Calendar, description: "时间窗与临时解锁" },
+        // 历史遗留 policy 页面已隐藏
+        // { name: "规则与日历", href: "/dashboard/admin/policy", icon: Calendar, description: "时间窗与临时解锁" },
         { name: "人员与分配", href: "/dashboard/admin/people", icon: Users, description: "用户与分配管理" },
         { name: "模板管理", href: "/dashboard/admin/templates", icon: BookOpen, description: "编辑所有来访者模板" },
         { name: "作业发布与管理", href: "/dashboard/admin/homework", icon: ClipboardList, description: "为班级发包并设置窗口期" },

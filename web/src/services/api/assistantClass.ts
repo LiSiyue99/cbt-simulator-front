@@ -42,5 +42,5 @@ export function getHomeworkSetFeedback(id: string, studentId: string, page = 1, 
 }
 
 export function getPackageCompliance() {
-  return httpGet<{ items: Array<{ setId: string; sequenceNumber: number; title?: string; studentStartAt: string; studentDeadline: string; assistantStartAt: string; assistantDeadline: string; totalStudents: number; sessionsStarted: number; submissions: number; feedbacks: number }> }>("/assistant-class/compliance");
+  return httpGet<{ items: Array<{ setId: string; classId: number; sequenceNumber: number; title?: string; studentStartAt: string; studentDeadline: string; assistantStartAt: string; assistantDeadline: string; totalStudents: number; sessionsStarted: number; submissions: number; feedbacks: number }> }>("/assistant-class/compliance");
 }

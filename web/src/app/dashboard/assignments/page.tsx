@@ -195,7 +195,7 @@ export default function AssignmentsPage() {
     } catch (e:any) {
       const code = e?.code;
       if (code === 'package_missing') setMsg('缺少作业包，无法更新');
-      else if (code === 'package_window_closed') setMsg('已过学生窗口，无法更新');
+      else if (code === 'package_window_closed') setMsg('已过提交时间，无法更新');
       else if (code === 'submission_not_found') setMsg('尚未提交作业，无法更新');
       else setMsg(e?.message || '更新失败');
     } finally {

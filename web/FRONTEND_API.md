@@ -32,6 +32,7 @@
     - 错误码：`package_missing` | `package_window_closed` | `cooldown_recent_created` | `session_unfinished`。
     - 仍保留 1 小时冷却与“未完成阻断”。
   - 新增：getVisitorTemplate(visitorInstanceId) → GET `/visitor/template` → `{ name, templateKey, brief }`（用于在会话页显示模板简介）。
+  - 新增：getStudentOutputs(visitorInstanceId) → GET `/student/outputs` → 返回 `{ diary[], activity[], homework[], ltm: { current, history[] } }`（供学生“查看产出”使用）。
 
 示例
 ```ts
@@ -58,6 +59,13 @@ await finalizeSession(sessionId, assignmentText);
 // 4) 读取模板 brief
 const tpl = await getVisitorTemplate(visitorInstanceId);
 setTemplateBrief(tpl?.brief || '');
+
+// 5) 学生查看产出
+const outputs = await getStudentOutputs(visitorInstanceId);
+setDiary(outputs.diary);
+setActivity(outputs.activity);
+setHomework(outputs.homework);
+setLtm(outputs.ltm);
 ```
 
 ---

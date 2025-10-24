@@ -3,12 +3,14 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/auth";
 import { getClassHomeworkSets, getHomeworkSetProgress, getHomeworkSetFeedback, getPackageCompliance } from "@/services/api/assistantClass";
+import { httpGet, httpPost, httpPut } from "@/services/http";
 
 // 行政助教：仅保留“按作业包查看”的集中表格
 export default function ClassMonitorPage() {
   const { state } = useAuth();
   const [homeworkSets, setHomeworkSets] = useState<any[]>([]);
   const [selectedSetId, setSelectedSetId] = useState<string>("");
+  const [selectedSet, setSelectedSet] = useState<any | null>(null);
   const [setProgress, setSetProgress] = useState<any[]>([]);
   const [showChat, setShowChat] = useState(false);
   const [chatStudent, setChatStudent] = useState<{ id: string; name?: string } | null>(null);
@@ -17,6 +19,8 @@ export default function ClassMonitorPage() {
   const [chatTotal, setChatTotal] = useState(0);
   const [pkgCompliance, setPkgCompliance] = useState<{ items: Array<{ setId: string; sequenceNumber: number; title?: string; studentStartAt: string; studentDeadline: string; assistantStartAt: string; assistantDeadline: string; totalStudents: number; sessionsStarted: number; submissions: number; feedbacks: number }> } | null>(null);
   const [pkgFilter, setPkgFilter] = useState<'all'|'open'|'upcoming'|'closed'>('all');
+  const [unlockForSetId, setUnlockForSetId] = useState<string | null>(null);
+  const [recentForSet, setRecentForSet] = useState<{ id: string; items: any[] } | null>(null);
 
   useEffect(() => {
     async function loadSets() {
@@ -40,6 +44,7 @@ export default function ClassMonitorPage() {
       if (!selectedSetId) return;
       const res = await getHomeworkSetProgress(selectedSetId);
       setSetProgress(res.items || []);
+      try { const detail:any = await httpGet(`/admin/homework/sets/${selectedSetId}` as any); setSelectedSet(detail?.item || null); } catch { setSelectedSet(null); }
     } catch { setSetProgress([]); }
   }
 
@@ -50,6 +55,81 @@ export default function ClassMonitorPage() {
     setChatItems([]);
     setChatPage(1);
     await loadChatPage(1, studentId);
+  }
+
+function UnlockEmailsPanel({ setId, classId, onDone }: { setId: string; classId: number; onDone?: () => void }) {
+    const [emails, setEmails] = useState<string[]>([""]);
+    const [until, setUntil] = useState<string>(new Date(Date.now() + 2 * 24 * 3600 * 1000).toISOString().slice(0, 16));
+  const [submitting, setSubmitting] = useState(false);
+  const [candidates, setCandidates] = useState<Array<{name?: string; email?: string}>>([]);
+  const [openIdx, setOpenIdx] = useState<number | null>(null);
+  useEffect(()=>{ (async()=>{ try { const res:any = await httpGet(`/assistant-class/students` as any); const items = (res?.items||[]).map((it:any)=>({ name: it.name, email: it.email })); setCandidates(items);} catch{ setCandidates([]);} })(); }, [classId]);
+    function updateEmail(idx:number,v:string){ const a=[...emails]; a[idx]=v; setEmails(a);} 
+    function addRow(){ setEmails(a=>[...a,""]); }
+    function removeRow(idx:number){ setEmails(a=>{ const b=[...a]; b.splice(idx,1); return b.length? b:[""]; }); }
+    async function submit(){
+      const list = emails.map(e=>e.trim()).filter(Boolean);
+      if(!list.length){ alert('请先输入至少一个学生邮箱'); return; }
+      if(!until){ alert('请填写解锁截止时间'); return; }
+      try {
+        setSubmitting(true);
+        const res:any = await httpPost(`/admin/homework/sets/${setId}/ddl-override/students/emails`, { emails: list, action: 'extend_student_tr', until: new Date(until) });
+        alert(`已解锁 ${Number(res?.affected||0)} 人；未匹配邮箱 ${Number((res?.missingEmails||[]).length)}`);
+        onDone?.();
+      } catch(e:any){ alert(e?.message || '解锁失败'); }
+      finally { setSubmitting(false); }
+    }
+    return (
+      <div className="w-full border rounded bg-white/70 p-3 space-y-2">
+        <div className="text-sm text-muted-foreground">按邮箱选择学生（逐项输入，点击“增加一行”添加更多）</div>
+        <div className="space-y-2">
+          {emails.map((em, idx)=> { const q=(em||'').trim().toLowerCase(); const list=!q? [] : (candidates||[]).filter(c=> (c.email||'').toLowerCase().startsWith(q) || (c.name||'').toLowerCase().startsWith(q)).slice(0,6); return (
+            <div key={idx} className="relative flex gap-2 items-start">
+              <div className="flex-1">
+                <input className="border rounded px-2 py-1 w-72 focus:outline-none focus:ring-2 focus:ring-primary/40" value={em} onFocus={()=> setOpenIdx(idx)} onBlur={()=> setTimeout(()=> setOpenIdx(v=> v===idx? null: v), 150)} onChange={(e)=>updateEmail(idx, e.target.value)} placeholder="姓名或邮箱，如 张三 或 zhangsan@..." />
+                {openIdx===idx && list.length>0 && (
+                  <div className="absolute z-50 mt-1 w-72 max-h-48 overflow-auto rounded border bg-white shadow">
+                    {list.map((c,i)=> (
+                      <button key={i} className="w-full text-left px-2 py-1 text-sm hover:bg-muted" onMouseDown={(e)=>{ e.preventDefault(); updateEmail(idx, c.email || c.name || ''); }}>
+                        {(c.name||'')} {c.email? ` <${c.email}>` : ''}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <button className="px-2 py-1 text-sm border rounded" onClick={()=>removeRow(idx)}>删除</button>
+            </div>
+          ); })}
+          <button className="text-sm underline text-primary" onClick={addRow}>+ 增加一行</button>
+        </div>
+        <div className="text-sm space-y-1">
+          <span className="text-muted-foreground">解锁截止时间（until）</span>
+          <div>
+            <input className="border rounded px-2 py-1 w-72 focus:outline-none focus:ring-2 focus:ring-primary/40" type="datetime-local" value={until} onChange={(e)=>setUntil(e.target.value)} />
+          </div>
+        </div>
+        <div className="pt-1">
+          <button className="px-3 py-1.5 bg-primary text-primary-foreground rounded disabled:opacity-60" disabled={submitting} onClick={submit}>{submitting? '提交中...' : '提交解锁'}</button>
+        </div>
+      </div>
+    );
+  }
+
+  function UnlockEmailsDialog({ setId, classId, onClose, onDone }: { setId: string; classId: number; onClose: () => void; onDone?: () => void }) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+        <div className="relative z-10 w-full max-w-lg">
+          <div className="rounded-xl shadow-xl ring-1 ring-black/5 bg-white">
+            <div className="flex items-center justify-between px-4 py-3 border-b">
+              <div className="font-semibold">为指定学生解锁</div>
+              <button className="text-sm px-2 py-1 border rounded" onClick={onClose}>关闭</button>
+            </div>
+            <div className="p-4"><UnlockEmailsPanel setId={setId} classId={classId} onDone={onDone} /></div>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   async function loadChatPage(page: number, studentId?: string) {
@@ -169,6 +249,20 @@ export default function ClassMonitorPage() {
           <button onClick={refreshSetProgress} className="px-3 py-1 bg-primary text-primary-foreground rounded">查看</button>
           <button onClick={exportCsv} className="px-3 py-1 border rounded">导出 CSV</button>
         </div>
+        {selectedSet && (
+          <div className="bg-white/70 rounded-lg border p-3 mb-3">
+            <div className="text-xs text-muted-foreground mb-1">窗口（学生）</div>
+            <div className="text-sm font-medium mb-2">{fmt(selectedSet.studentStartAt)} <span className="mx-1 text-muted-foreground">~</span> <span className="font-semibold text-primary">{fmt(selectedSet.studentDeadline)}</span></div>
+            <div className="text-xs text-muted-foreground mb-1">窗口（助教）</div>
+            <div className="text-sm font-medium">{fmt(selectedSet.assistantStartAt)} <span className="mx-1 text-muted-foreground">~</span> <span className="font-semibold text-primary">{fmt(selectedSet.assistantDeadline)}</span></div>
+            <div className="flex flex-wrap gap-2 mt-3">
+              <button className="px-2 py-1 border rounded" onClick={async()=>{ const ns=prompt('学生截止时间(ISO，如 2025-10-20T16:00)', (selectedSet.studentDeadline||'').slice(0,16)); if(!ns) return; await httpPut(`/admin/homework/sets/${selectedSetId}`, { studentDeadline: new Date(ns) }); await refreshSetProgress(); }}>修改学生截止时间</button>
+              <button className="px-2 py-1 border rounded" onClick={async()=>{ const na=prompt('助教截止时间(ISO，如 2025-10-21T16:00)', (selectedSet.assistantDeadline||'').slice(0,16)); if(!na) return; await httpPut(`/admin/homework/sets/${selectedSetId}`, { assistantDeadline: new Date(na) }); await refreshSetProgress(); }}>修改助教截止时间</button>
+              <button className="px-2 py-1 border rounded" onClick={()=> setUnlockForSetId(selectedSetId)}>为学生解锁</button>
+              <button className="px-2 py-1 border rounded" onClick={async()=>{ const r:any = await httpGet(`/admin/homework/sets/${selectedSetId}/ddl-override/recent` as any); setRecentForSet({ id: selectedSetId, items: r?.items || [] }); }}>查看最近解锁记录</button>
+            </div>
+          </div>
+        )}
         {selectedSetId ? (
           <div className="overflow-auto">
             <table className="w-full text-sm">
@@ -245,6 +339,36 @@ export default function ClassMonitorPage() {
               <div className="space-x-2">
                 <button className="px-3 py-1 border rounded disabled:opacity-50" disabled={chatPage<=1} onClick={()=>loadChatPage(chatPage-1)}>上一页</button>
                 <button className="px-3 py-1 border rounded disabled:opacity-50" disabled={(chatPage*50)>=chatTotal} onClick={()=>loadChatPage(chatPage+1)}>下一页</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {unlockForSetId && (
+        <UnlockEmailsDialog setId={unlockForSetId!} classId={Number((selectedSet as any)?.classId || 0)} onClose={()=> setUnlockForSetId(null)} onDone={()=>{ setUnlockForSetId(null); refreshSetProgress(); }} />
+      )}
+      {recentForSet && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/40" onClick={()=> setRecentForSet(null)} />
+          <div className="relative z-10 w-full max-w-2xl">
+            <div className="rounded-xl shadow-xl ring-1 ring-black/5 bg-white">
+              <div className="flex items-center justify-between px-4 py-3 border-b"><div className="font-semibold">最近解锁记录</div><button className="text-sm px-2 py-1 border rounded" onClick={()=> setRecentForSet(null)}>关闭</button></div>
+              <div className="p-4 max-h-[70vh] overflow-auto text-sm">
+                {(recentForSet!.items||[]).length===0 ? (<div className="text-muted-foreground">暂无记录</div>) : (
+                  <div className="space-y-2">
+                    {(recentForSet!.items||[]).map((row:any, idx:number)=> (
+                      <div key={idx} className="border rounded p-2 bg-white/70">
+                        <div className="flex flex-wrap gap-x-4 gap-y-1">
+                          <div><span className="text-muted-foreground">对象</span>：{row.subjectEmail || row.subjectName || row.subjectType}</div>
+                          <div><span className="text-muted-foreground">动作</span>：{row.action}</div>
+                          <div><span className="text-muted-foreground">有效期</span>：{fmt(row.until)}</div>
+                          <div><span className="text-muted-foreground">创建时间</span>：{fmt(row.createdAt)}</div>
+                          <div className="truncate max-w-full"><span className="text-muted-foreground">作用域</span>：{row.scope}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
