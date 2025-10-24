@@ -54,7 +54,7 @@ export default function StudentDetailPage() {
   const [chatInput, setChatInput] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'sessions' | 'thoughtRecords' | 'chatHistory' | 'diary' | 'activity' | 'ltm'>('sessions');
+  const [activeTab, setActiveTab] = useState<'thoughtRecords' | 'chatHistory' | 'diary' | 'activity' | 'ltm'>('thoughtRecords');
   // 聊天分页
   const [chatPage, setChatPage] = useState<number>(1);
   const [chatPageSize] = useState<number>(50);
@@ -106,7 +106,7 @@ export default function StudentDetailPage() {
     const tab = searchParams?.get('tab');
     if (sid) {
       setSelectedSessionId(sid);
-      if (tab === 'homework') setActiveTab('thoughtRecords'); else setActiveTab('sessions');
+      if (tab === 'homework') setActiveTab('thoughtRecords');
     }
   }, [searchParams]);
 
@@ -230,17 +230,18 @@ export default function StudentDetailPage() {
         </div>
 
         <div className="grid grid-cols-12 gap-6">
-          {/* Left Column - Sessions */}
-          <div className="col-span-12 lg:col-span-4">
+          {/* Left Column: top sessions list, bottom feedback/chat */}
+          <div className="col-span-12 lg:col-span-4 space-y-6">
+            {/* 会话列表 */}
             <div className="bg-card/80 backdrop-blur-sm rounded-xl border border-border shadow-sm">
               <div className="p-6 border-b border-border">
                 <h2 className="font-semibold text-foreground flex items-center gap-2">
                   <MessageCircle className="w-5 h-5 text-primary" />
                   会话列表
                 </h2>
-                <p className="text-sm text-muted-foreground mt-1">点击会话查看详细信息</p>
+                <p className="text-sm text-muted-foreground mt-1">点击会话查看右侧资料</p>
               </div>
-              <div className="p-4 space-y-2 max-h-[70vh] overflow-auto pr-2">
+              <div className="p-4 space-y-2 max-h-[36vh] overflow-auto pr-2">
                 {sessions.length === 0 ? (
                   <p className="text-center text-muted-foreground py-8">暂无会话记录</p>
                 ) : (
@@ -265,16 +266,58 @@ export default function StudentDetailPage() {
                 )}
               </div>
             </div>
+
+            {/* 反馈管理（助教与学生聊天） */}
+            <div className="bg-card/80 backdrop-blur-sm rounded-xl border border-border shadow-sm">
+              <div className="p-6 border-b border-border">
+                <h2 className="font-semibold text-foreground flex items-center gap-2">
+                  <MessageCircle className="w-5 h-5 text-primary" />
+                  反馈管理
+                </h2>
+              </div>
+              <div className="p-4 space-y-4 max-h-[36vh] overflow-auto pr-2">
+                {!selectedSessionId ? (
+                  <p className="text-muted-foreground">请先在上方选择一个会话</p>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="h-48 border border-border rounded p-3 bg-background overflow-y-auto">
+                      {chatList.length < chatTotal && (
+                        <div className="mb-2 text-center">
+                          <button onClick={loadMoreChat} disabled={chatLoadingMore} className="text-xs px-2 py-1 border rounded">
+                            {chatLoadingMore ? '加载中...' : '加载更多'}
+                          </button>
+                        </div>
+                      )}
+                      {chatList.length === 0 ? (
+                        <div className="text-xs text-muted-foreground">暂无消息</div>
+                      ) : (
+                        <div className="space-y-2">
+                          {chatList.map(m => (
+                            <div key={m.id} className={`p-2 rounded border max-w-[80%] ${m.senderRole==='assistant_tech' ? 'bg-blue-50 border-blue-200 ml-auto' : 'bg-green-50 border-green-200'}`}>
+                              <div className="text-xs text-muted-foreground mb-1">{new Date(m.createdAt).toLocaleString('zh-CN')} · {m.senderRole==='assistant_tech'?'我':'学生'}</div>
+                              <div className="text-sm text-foreground whitespace-pre-wrap">{m.content}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      <textarea value={chatInput} onChange={e=>setChatInput(e.target.value)} rows={2} placeholder="输入消息..." className="flex-1 rounded border border-border px-3 py-2 text-sm" />
+                      <button onClick={sendChatMsg} disabled={loading||!chatInput.trim()} className="px-4 py-2 bg-primary text-primary-foreground rounded">发送</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
-          {/* Right Column - Details */}
+          {/* Right Column - Only materials tabs */}
           <div className="col-span-12 lg:col-span-8">
             <div className="bg-card/80 backdrop-blur-sm rounded-xl border border-border shadow-sm">
               {/* Tab Navigation */}
               <div className="border-b border-border">
                 <nav className="flex p-6 pb-0 overflow-x-auto">
                   {[
-                    { key: 'sessions', label: '反馈管理', icon: MessageCircle },
                     { key: 'thoughtRecords', label: '作业', icon: ClipboardList },
                     { key: 'chatHistory', label: '聊天记录', icon: MessageCircle },
                     { key: 'diary', label: 'AI日记', icon: BookOpen },
@@ -299,45 +342,6 @@ export default function StudentDetailPage() {
 
               {/* Tab Content */}
               <div className="p-6">
-                {activeTab === 'sessions' && (
-                  <div>
-                    <h3 className="font-semibold text-foreground mb-4">助教与学生聊天</h3>
-                    {!selectedSessionId ? (
-                      <p className="text-muted-foreground">请先从左侧选择一个会话</p>
-                    ) : (
-                      <div className="space-y-6 max-h-[65vh] overflow-auto pr-2">
-                        {/* Chat */}
-                        <div>
-                          <div className="h-60 border border-border rounded p-3 bg-background overflow-y-auto mb-2">
-                            {chatList.length < chatTotal && (
-                              <div className="mb-2 text-center">
-                                <button onClick={loadMoreChat} disabled={chatLoadingMore} className="text-xs px-2 py-1 border rounded">
-                                  {chatLoadingMore ? '加载中...' : '加载更多'}
-                                </button>
-                              </div>
-                            )}
-                            {chatList.length === 0 ? (
-                              <div className="text-xs text-muted-foreground">暂无消息</div>
-                            ) : (
-                              <div className="space-y-2">
-                                {chatList.map(m => (
-                                  <div key={m.id} className={`p-2 rounded border max-w-[80%] ${m.senderRole==='assistant_tech' ? 'bg-blue-50 border-blue-200 ml-auto' : 'bg-green-50 border-green-200'}`}>
-                                    <div className="text-xs text-muted-foreground mb-1">{new Date(m.createdAt).toLocaleString('zh-CN')} · {m.senderRole==='assistant_tech'?'我':'学生'}</div>
-                                    <div className="text-sm text-foreground whitespace-pre-wrap">{m.content}</div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                          <div className="flex gap-2">
-                            <textarea value={chatInput} onChange={e=>setChatInput(e.target.value)} rows={2} placeholder="输入消息..." className="flex-1 rounded border border-border px-3 py-2 text-sm" />
-                            <button onClick={sendChatMsg} disabled={loading||!chatInput.trim()} className="px-4 py-2 bg-primary text-primary-foreground rounded">发送</button>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
 
                 {activeTab === 'thoughtRecords' && (
                   <div>
