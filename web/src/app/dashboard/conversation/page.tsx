@@ -25,7 +25,8 @@ import {
   Clock,
   CheckCircle2,
   Sparkles,
-  ArrowLeft
+  ArrowLeft,
+  RotateCcw
 } from "lucide-react";
 
 interface Session {
@@ -820,7 +821,7 @@ export default function ConversationPage() {
                         message.speaker === 'user'
                           ? 'bg-gradient-to-br from-primary to-primary/90 text-primary-foreground rounded-br-md'
                           : 'bg-white border border-gray-200 text-foreground rounded-bl-md'
-                      }`}>
+                      } ${message.speaker === 'ai' && index === chat.length - 1 && !selectedHistorySession ? 'pb-8 pr-10' : ''} ${message.speaker === 'user' ? 'pr-12 pb-6' : ''}`}>
                         <p className="text-sm leading-relaxed">{message.content}</p>
 
                         {message.timestamp && (
@@ -834,6 +835,33 @@ export default function ConversationPage() {
                               minute: '2-digit'
                             })}
                           </p>
+                        )}
+                        {/* Retry button for the last AI message */}
+                        {message.speaker === 'ai' && index === chat.length - 1 && !selectedHistorySession && (
+                          <div className="absolute bottom-2 right-2">
+                            <RetryLastButton sessionId={sessionId!} onRetried={(newContent)=>{
+                              // 替换最后一条 AI 消息
+                              setChat(prev => {
+                                const next = [...prev];
+                                const lastIdx = next.length - 1;
+                                if (lastIdx >= 0 && next[lastIdx]?.speaker === 'ai') {
+                                  next[lastIdx] = { speaker: 'ai', content: newContent, timestamp: new Date().toISOString() } as any;
+                                }
+                                return next;
+                              });
+                            }} />
+                          </div>
+                        )}
+                        {message.speaker === 'user' && !selectedHistorySession && (
+                          <div className="absolute bottom-1 right-1">
+                            <RollbackButton
+                              sessionId={sessionId!}
+                              userIndex={index}
+                              onDone={(updated)=>{
+                                setChat(updated);
+                              }}
+                            />
+                          </div>
                         )}
                       </div>
                     </div>
@@ -1367,5 +1395,72 @@ function OutputsModal({ onClose, detail, visitorInstanceId, onConfirm, confirmTe
         )}
       </div>
     </div>
+  );
+}
+
+function RetryLastButton({ sessionId, onRetried }: { sessionId: string; onRetried: (content: string)=>void }){
+  const [busy, setBusy] = useState(false);
+  return (
+    <button
+      onClick={async ()=>{
+        if (busy) return;
+        setBusy(true);
+        try {
+          const { retryLastAi } = await import('@/services/api/sessions');
+          const r = await retryLastAi(sessionId);
+          const content = (r as any)?.aiResponse?.content || '';
+          if (content) onRetried(content);
+        } catch (e:any) {
+          // 可选：显示错误
+        } finally {
+          setBusy(false);
+        }
+      }}
+      className="inline-flex items-center gap-1 text-xs px-2 py-1 border rounded bg-white hover:bg-gray-50"
+      title="重新生成此条回复"
+    >
+      <RotateCcw className="w-3 h-3" />{busy ? '重试中…' : '重试'}
+    </button>
+  );
+}
+
+function RollbackButton({ sessionId, userIndex, onDone }: { sessionId: string; userIndex: number; onDone: (updated: ChatTurn[])=>void }){
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  return (
+    <>
+      <button onClick={()=>setOpen(true)} className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-white/40 bg-white/10 text-white hover:bg-white/20" title="回到此节点并继续对话">回到此处</button>
+      {open && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-card text-foreground rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold mb-2">回到此对话节点</h3>
+            <p className="text-sm text-muted-foreground mb-3">编辑该条发言后将清空该条之后的所有记录，并生成新的AI回复。</p>
+            <textarea value={text} onChange={(e)=>setText(e.target.value)} className="w-full border border-border rounded px-3 py-2 text-sm bg-white text-foreground placeholder:text-muted-foreground" rows={4} placeholder="在此编辑你的发言" />
+            <div className="mt-3 flex justify-end gap-2">
+              <button onClick={()=>setOpen(false)} className="px-3 py-2 border rounded">取消</button>
+              <button
+                onClick={async ()=>{
+                  if (busy) return; setBusy(true);
+                  try {
+                    const { rollbackAndReplay, getSessionDetail } = await import('@/services/api/sessions');
+                    await rollbackAndReplay(sessionId, userIndex, text);
+                    const d = await getSessionDetail(sessionId);
+                    onDone(d.chatHistory || []);
+                    setOpen(false);
+                  } catch (e:any) {
+                    // 可以在页面顶部提示错误
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+                className="px-3 py-2 bg-primary text-primary-foreground rounded disabled:opacity-60"
+                disabled={busy}
+              >{busy?'处理中…':'确定'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

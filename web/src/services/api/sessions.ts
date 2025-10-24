@@ -95,3 +95,17 @@ export function getStudentOutputs(visitorInstanceId: string) {
     ltm: { current: Record<string, unknown>; history: { createdAt: string; content: Record<string, unknown> }[] };
   }>(`/student/outputs`, { query: { visitorInstanceId } });
 }
+
+/**
+ * retryLastAi - 重试最后一条 AI 回复（学生）
+ */
+export function retryLastAi(sessionId: string) {
+  return httpPost<{ ok: boolean; aiResponse?: { speaker: 'ai'; content: string; timestamp: string } }>(`/sessions/${sessionId}/retry-last`, {});
+}
+
+/**
+ * rollbackAndReplay - 回到指定用户发言索引，替换为新内容，并继续生成新的AI回复
+ */
+export function rollbackAndReplay(sessionId: string, userIndex: number, newContent: string) {
+  return httpPost<{ ok: boolean; aiResponse?: { speaker: 'ai'; content: string; timestamp: string } }>(`/sessions/${sessionId}/rollback-replay`, { userIndex, newContent });
+}
