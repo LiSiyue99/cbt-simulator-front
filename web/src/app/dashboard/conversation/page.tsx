@@ -858,15 +858,7 @@ export default function ConversationPage() {
 
                 <div ref={messagesEndRef} />
               </div>
-              {showOutputs && historyDetail && (
-                <OutputsModal
-                  onClose={()=>{ setShowOutputs(false); setShowOutputsForStart(false); }}
-                  detail={historyDetail}
-                  visitorInstanceId={visitorInstanceId!}
-                  onConfirm={showOutputsForStart ? async ()=>{ await confirmStartSession(); } : undefined}
-                  confirmText={showOutputsForStart ? '开始对话' : undefined}
-                />
-              )}
+              {/* OutputsModal moved to global scope below to ensure it renders regardless of left pane state */}
             </div>
           )}
         </div>
@@ -1048,6 +1040,17 @@ export default function ConversationPage() {
             <button onClick={handleStartNewSession} className="px-3 py-1 text-sm bg-green-600 text-white rounded">开始第{nextSessionNumberHint || ''}次对话</button>
           </div>
         </div>
+      )}
+
+      {/* Outputs Modal (Global) */}
+      {showOutputs && historyDetail && (
+        <OutputsModal
+          onClose={()=>{ setShowOutputs(false); setShowOutputsForStart(false); }}
+          detail={historyDetail}
+          visitorInstanceId={visitorInstanceId!}
+          onConfirm={showOutputsForStart ? async ()=>{ await confirmStartSession(); } : undefined}
+          confirmText={showOutputsForStart ? '开始对话' : undefined}
+        />
       )}
 
       {/* Activity Detail Modal */}
