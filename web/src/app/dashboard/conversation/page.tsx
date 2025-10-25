@@ -12,6 +12,7 @@ import {
   getSessionDetail,
   prepareNewSession,
   ensureSessionOutputs,
+  getSessionsOverview,
   ChatTurn
 } from "@/services/api/sessions";
 import {
@@ -74,7 +75,6 @@ export default function ConversationPage() {
   const [allowNext, setAllowNext] = useState<boolean>(false);
   const [nextSessionNumberHint, setNextSessionNumberHint] = useState<number | null>(null);
   const [nextReadyMsg, setNextReadyMsg] = useState<string>("");
-  const [cooldownUntil, setCooldownUntil] = useState<number | null>(null);
   const [cooldownLeftSec, setCooldownLeftSec] = useState<number>(0);
   const visitorName = state.me?.currentVisitor?.name || "AI访客";
   const [templateBrief, setTemplateBrief] = useState<string>("");
@@ -116,82 +116,56 @@ export default function ConversationPage() {
   }, [visitorInstanceId]);
 
   useEffect(() => {
-    async function loadSessionData() {
+    async function loadOverview() {
       if (!visitorInstanceId) return;
       setLoading(true);
       setMsg(null);
       try {
-        const [last, sessionsList] = await Promise.all([
-          getLastSession(visitorInstanceId),
-          listSessions(visitorInstanceId)
-        ]);
-
-        // Load last session - only set as current if not finalized
-        let currentId: string | null = null;
-        if (last && !last.finalizedAt) {
-          // This is an active session
-          setSessionId(last.sessionId);
-          setSessionNumber(last.sessionNumber);
-          setChat(last.chatHistory || []);
-          currentId = last.sessionId;
-          setAllowNext(false);
+        const o = await getSessionsOverview(visitorInstanceId);
+        if (o.current) {
+          setSessionId(o.current.sessionId);
+          setSessionNumber(o.current.sessionNumber);
+          setChat(o.current.chatHistory || []);
         } else {
-          // No active session or last session is finalized
           setSessionId(null);
           setSessionNumber(null);
           setChat([]);
-          // 只有当最新一条会话产出齐备，才允许开始下一次
-          if (sessionsList.items && sessionsList.items.length > 0) {
-            const latest = sessionsList.items[0];
-            try {
-              const r = await ensureSessionOutputs(latest.sessionId);
-              const ready = Boolean(r.hasDiary && r.hasActivity && r.hasLtm);
-              setAllowNext(ready);
-              setNextSessionNumberHint(ready ? latest.sessionNumber + 1 : null);
-            } catch {
-              setAllowNext(false);
-            }
-          } else {
-            // 没有历史会话时可开始第一条
-            setAllowNext(true);
-          }
         }
-
-        // Load sessions history - show all with status; exclude current running one if any
-        const sessionsData = sessionsList.items
-          .map(item => ({
-            sessionId: item.sessionId,
-            sessionNumber: item.sessionNumber,
-            date: item.createdAt,
-            completed: !!item.completed,
-            messageCount: item.messageCount ?? 0,
-            lastMessage: item.lastMessage
-          }))
-          .filter(s => !currentId || s.sessionId !== currentId);
+        const sessionsData = (o.history || []).map(h => ({
+          sessionId: h.sessionId,
+          sessionNumber: h.sessionNumber,
+          date: h.createdAt,
+          completed: !!h.completed,
+          messageCount: h.messageCount ?? 0,
+          lastMessage: h.lastMessage,
+        }));
         setSessions(sessionsData);
+        setLastFinalizedSessionId(o.lastFinalizedSessionId);
+        setCooldownLeftSec(o.cooldownRemainingSec || 0);
+        setAllowNext(Boolean(o.allowStartNext));
+        if (sessionsData.length) {
+          const maxN = Math.max(...sessionsData.map(s=>s.sessionNumber));
+          setNextSessionNumberHint(maxN + 1);
+        } else {
+          setNextSessionNumberHint(1);
+        }
       } catch (e: any) {
         setMsg(e?.message || "加载失败");
       } finally {
         setLoading(false);
       }
     }
-    loadSessionData();
+    loadOverview();
   }, [visitorInstanceId]);
 
-  // 结束后2分钟冷却计时：禁止查看最新产出与开始下一次
+  // 冷却倒计时每秒递减（以服务端返回的剩余秒数为准）
   useEffect(() => {
-    if (!cooldownUntil) { setCooldownLeftSec(0); return; }
-    const tick = () => {
-      const left = Math.max(0, Math.ceil((cooldownUntil - Date.now()) / 1000));
-      setCooldownLeftSec(left);
-      if (left === 0) {
-        setCooldownUntil(null);
-      }
-    };
-    tick();
-    const id = setInterval(tick, 1000);
+    if (cooldownLeftSec <= 0) return;
+    const id = setInterval(() => {
+      setCooldownLeftSec(v => Math.max(0, v - 1));
+    }, 1000);
     return () => clearInterval(id);
-  }, [cooldownUntil]);
+  }, [cooldownLeftSec]);
 
   // 当切换到新的 playground 实例时，清理历史查看与快照，避免串会话
   useEffect(() => {
@@ -211,8 +185,8 @@ export default function ConversationPage() {
       try {
         // 仅在无进行中会话、未查看历史、且尚未允许时轮询
         if (sessionId || selectedHistorySession || allowNext) return;
-        // 冷却期间不轮询
-        if (cooldownUntil && Date.now() < cooldownUntil) return;
+        // 冷却期间不轮询（基于剩余秒数判断）
+        if (cooldownLeftSec > 0) return;
         const list = await listSessions(visitorInstanceId);
         const items = list.items || [];
         if (items.length === 0) return; // 第一次对话可直接开始，由上游逻辑处理
@@ -236,9 +210,8 @@ export default function ConversationPage() {
 
   const handleStartNewSession = async () => {
     if (!visitorInstanceId || startingNewSession) return;
-    if (cooldownUntil && Date.now() < cooldownUntil) {
-      const left = Math.max(0, Math.ceil((cooldownUntil - Date.now()) / 1000));
-      setMsg(`产出生成中，请在 ${left} 秒后再试`);
+    if (cooldownLeftSec > 0) {
+      setMsg(`产出生成中，请在 ${cooldownLeftSec} 秒后再试`);
       return;
     }
 
@@ -356,9 +329,9 @@ export default function ConversationPage() {
 
 
     try {
-      // 触发后端生成，不等待
+      // 触发后端生成，等待完成以确保 finalizedAt 已写入，避免来回切换后仍显示“进行中”
       const current = sessionId;
-      finalizeSession(current, assignment).catch(() => {});
+      await finalizeSession(current, assignment);
 
       // 清理本地进行中状态
       setSessionId(null);
@@ -366,8 +339,8 @@ export default function ConversationPage() {
       setChat([]);
       setAssignment("");
       setLastFinalizedSessionId(current);
-      // 设置2分钟冷却期，期间禁止查看最新产出与开始下一次
-      setCooldownUntil(Date.now() + 2 * 60 * 1000);
+      // 冷却剩余秒数交由后端 overview 提供，前端不再本地设定终止时刻
+      setCooldownLeftSec(120);
       setAllowNext(false);
       setNextReadyMsg("");
       setLoading(false);
@@ -442,9 +415,8 @@ export default function ConversationPage() {
   const handleShowOutputs = async () => {
     if (!selectedHistorySession) return;
     // 冷却期内禁止查看最新一条会话的产出
-    if (selectedHistorySession === lastFinalizedSessionId && cooldownUntil && Date.now() < cooldownUntil) {
-      const left = Math.max(0, Math.ceil((cooldownUntil - Date.now()) / 1000));
-      setMsg(`产出生成中，请在 ${left} 秒后查看`);
+    if (selectedHistorySession === lastFinalizedSessionId && cooldownLeftSec > 0) {
+      setMsg(`产出生成中，请在 ${cooldownLeftSec} 秒后查看`);
       return;
     }
     if (!historyDetail) {
@@ -695,7 +667,7 @@ export default function ConversationPage() {
               <>
                 <button
                   onClick={handleShowOutputs}
-                  disabled={Boolean(selectedHistorySession === lastFinalizedSessionId && cooldownUntil && Date.now() < (cooldownUntil as number))}
+                  disabled={Boolean(selectedHistorySession === lastFinalizedSessionId && cooldownLeftSec > 0)}
                   className="px-3 py-2 text-sm border border-border rounded-lg hover:bg-accent transition-colors disabled:opacity-60"
                 >
                   查看产出
@@ -788,11 +760,7 @@ export default function ConversationPage() {
                   </span>
                 </button>
               ) : (
-                <div className="text-sm text-muted-foreground">
-                  {cooldownUntil && Date.now() < cooldownUntil
-                    ? `产出生成中，预计剩余 ${Math.floor(cooldownLeftSec / 60)}:${String(cooldownLeftSec % 60).padStart(2,'0')}`
-                    : 'AI生成中，请稍后刷新页面查看'}
-                </div>
+                <div className="text-sm text-muted-foreground">{`产出生成中，预计剩余 ${Math.floor(cooldownLeftSec / 60)}:${String(cooldownLeftSec % 60).padStart(2,'0')}`}</div>
               )}
             </div>
           ) : (
@@ -1309,32 +1277,36 @@ function OutputsModal({ onClose, detail, visitorInstanceId, onConfirm, confirmTe
   }, [detail.sessionId, visitorInstanceId]);
 
   const renderActivity = (act: any) => {
-    if (!act) return <p className="text-sm text-muted-foreground">无</p>;
-    const hw = act.homework_assignment;
-    const log = act.daily_log || {};
-    return (
-      <div className="space-y-4">
-        {hw && (
-          <div className="p-3 bg-primary/5 border border-primary/20 rounded"><span className="font-semibold">作业：</span><span className="text-sm text-muted-foreground">{hw}</span></div>
-        )}
-        {Object.keys(log).length > 0 && (
-          <div>
-            <h4 className="font-medium mb-2">每日记录</h4>
-            <div className="space-y-2">
-              {Object.entries(log).map(([k, v]: any) => (
-                <div key={k} className="p-3 bg-background/50 border rounded">
-                  <div className="text-sm font-medium">{v.date}（{v.day_type}）</div>
-                  {Array.isArray(v.main_activities) && v.main_activities.length > 0 && (
-                    <ul className="ml-4 list-disc text-sm text-muted-foreground">
-                      {v.main_activities.map((m: string, i: number) => <li key={i}>{m}</li>)}
-                    </ul>
-                  )}
-                  {v.homework_progress && <div className="text-sm text-muted-foreground mt-1">作业进度：{v.homework_progress}</div>}
-                </div>
-              ))}
+    if (!act) return <p className="text-sm text-muted-foreground">AI生成中，请稍后刷新页面查看</p>;
+    // 兼容新结构：{ summary: string, details?: any }
+    let payload: any = act?.details ?? act;
+    if (typeof payload === 'string') {
+      try { payload = JSON.parse(payload); } catch { /* 显示原文 */ }
+    }
+    // 通用 JSON 渲染
+    const renderJson = (v: any): any => {
+      if (v === null || v === undefined) return <span className="text-muted-foreground">—</span>;
+      if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') return <span className="whitespace-pre-wrap text-sm text-foreground">{String(v)}</span>;
+      if (Array.isArray(v)) return (
+        <ul className="list-disc ml-4 space-y-1">
+          {v.map((it, idx) => (<li key={idx}>{renderJson(it)}</li>))}
+        </ul>
+      );
+      if (typeof v === 'object') return (
+        <div className="space-y-2">
+          {Object.entries(v).map(([k, val]) => (
+            <div key={k}>
+              <div className="text-xs font-medium text-muted-foreground">{k}</div>
+              <div className="text-sm">{renderJson(val)}</div>
             </div>
-          </div>
-        )}
+          ))}
+        </div>
+      );
+      return <span className="text-sm">{String(v)}</span>;
+    };
+    return (
+      <div className="p-2">
+        {renderJson(payload)}
       </div>
     );
   };

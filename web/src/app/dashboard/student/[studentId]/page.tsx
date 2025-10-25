@@ -465,44 +465,35 @@ export default function StudentDetailPage() {
                       const a = history?.activity?.find(x => x.sessionNumber === sn);
                       if (!a || !a.preSessionActivity) return <p className="text-muted-foreground">该会话暂无活动记录</p>;
                       const act = a.preSessionActivity as any;
+                      const details = act?.details ?? act; // 兼容旧数据
+                      // 通用 JSON 渲染（key-value 树形）
+                      const renderJson = (v: any) => {
+                        if (v === null || v === undefined) return <span className="text-muted-foreground">—</span>;
+                        if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') return <span className="whitespace-pre-wrap">{String(v)}</span>;
+                        if (Array.isArray(v)) return (
+                          <ul className="list-disc ml-4 space-y-1">
+                            {v.map((it, idx) => (
+                              <li key={idx}>{renderJson(it)}</li>
+                            ))}
+                          </ul>
+                        );
+                        if (typeof v === 'object') return (
+                          <div className="space-y-2">
+                            {Object.entries(v).map(([k, val]) => (
+                              <div key={k} className="">
+                                <div className="text-xs font-medium text-muted-foreground">{k}</div>
+                                <div className="text-sm">{renderJson(val)}</div>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                        return <span>{String(v)}</span>;
+                      };
                       return (
                         <div className="space-y-4 max-h-[65vh] overflow-auto pr-2">
-                          {act.homework_assignment && (
-                            <div className="p-4 bg-primary/5 rounded-lg border border-primary/20">
-                              <h4 className="font-semibold text-primary mb-2">📝 布置的作业</h4>
-                              <p className="text-sm text-foreground">{act.homework_assignment}</p>
-                            </div>
-                          )}
-                          {act.daily_log && (
-                            <div className="space-y-3">
-                              <h4 className="font-semibold text-foreground">📅 每日记录</h4>
-                              {Object.entries(act.daily_log).map(([day, data]: [string, any]) => (
-                                <div key={day} className="p-3 bg-gray-50 rounded border">
-                                  <div className="flex justify-between mb-2">
-                                    <span className="font-medium">{data.date}（{data.day_type}）</span>
-                                  </div>
-                                  <div className="space-y-2 text-sm">
-                                    {Array.isArray(data.main_activities) && (
-                                      <div>
-                                        <span className="font-medium text-gray-700">主要活动:</span>
-                                        <ul className="mt-1 space-y-1">
-                                          {data.main_activities.map((it: string, idx: number) => (
-                                            <li key={idx} className="text-gray-600 ml-2">• {it}</li>
-                                          ))}
-                                        </ul>
-                                      </div>
-                                    )}
-                                    {data.homework_progress && (
-                                      <div>
-                                        <span className="font-medium text-gray-700">作业进度:</span>
-                                        <p className="text-gray-600">{data.homework_progress}</p>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
+                          <div className="p-4 bg-background/50 rounded-lg border border-border">
+                            {renderJson(details)}
+                          </div>
                         </div>
                       );
                     })()}

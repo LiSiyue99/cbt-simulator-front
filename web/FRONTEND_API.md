@@ -20,9 +20,11 @@
 - startSession({ visitorInstanceId, auto? }) → POST `/sessions/start` → `{ sessionId, sessionNumber }`
 - appendMessage(sessionId, speaker, content) → POST `/sessions/{id}/messages` → `{ ok, aiResponse? }`
 - finalizeSession(sessionId, assignment?) → POST `/sessions/{id}/finalize` → `{ diary }`
-- getLastSession(visitorInstanceId) → GET `/sessions/last` → `{ sessionId, sessionNumber, chatHistory, finalizedAt? } | null`
-- listSessions(visitorInstanceId, page?, pageSize?, includePreview=true) → GET `/sessions/list`
-  - 返回字段：`messageCount/hasDiary/hasActivity/hasThoughtRecord/lastMessage?`
+- getSessionsOverview(visitorInstanceId) → GET `/sessions/overview`
+  - 返回：`{ current, history[], lastFinalizedSessionId, cooldownRemainingSec, allowStartNext }`
+  - 建议：对话页统一依赖该接口，避免混用 `getLastSession/listSessions/ensureSessionOutputs` 带来的竞态。
+- getLastSession(visitorInstanceId) → GET `/sessions/last`（兼容保留，新的页面无需使用）
+- listSessions(visitorInstanceId, page?, pageSize?, includePreview=true) → GET `/sessions/list`（兼容保留）
 - getSessionDetail(sessionId) → GET `/sessions/{id}` → 详情
 - prepareNewSession(sessionId) → POST `/sessions/{id}/prepare`（回退用途）
 - ensureSessionOutputs(sessionId) → POST `/sessions/{id}/ensure-outputs`（开始新对话前轮询校验）
@@ -66,6 +68,13 @@ setDiary(outputs.diary);
 setActivity(outputs.activity);
 setHomework(outputs.homework);
 setLtm(outputs.ltm);
+
+// 6) 对话页统一快照
+const o = await getSessionsOverview(visitorInstanceId);
+setSessions(o.history);
+if (o.current) { setSessionId(o.current.sessionId); setChat(o.current.chatHistory); }
+setAllowNext(o.allowStartNext);
+setCooldownLeftSec(o.cooldownRemainingSec);
 ```
 
 ---

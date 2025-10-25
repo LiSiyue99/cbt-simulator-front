@@ -85,6 +85,19 @@ export function resetSession(sessionId: string, mode: 'auto'|'soft'|'hard' = 'au
 }
 
 /**
+ * getSessionsOverview - 统一读取进行中/历史/冷却/是否可开始
+ */
+export function getSessionsOverview(visitorInstanceId: string) {
+  return httpGet<{
+    current: { sessionId: string; sessionNumber: number; chatHistory: ChatTurn[] } | null;
+    history: { sessionId: string; sessionNumber: number; createdAt: string; completed: boolean; messageCount: number; lastMessage?: { speaker: 'user'|'ai'; content: string; timestamp?: string }; hasDiary: boolean; hasActivity: boolean }[];
+    lastFinalizedSessionId: string | null;
+    cooldownRemainingSec: number;
+    allowStartNext: boolean;
+  }>(`/sessions/overview`, { query: { visitorInstanceId } });
+}
+
+/**
  * getStudentOutputs - 学生查看自身实例的历史产出（日记/活动/作业/LTM）
  */
 export function getStudentOutputs(visitorInstanceId: string) {
